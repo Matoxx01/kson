@@ -21,9 +21,10 @@ interface KsonCoreTest {
      * and custom [CompileSettings] may be constructed as needed
      */
     data class CompileSettings(
-        val ksonSettings: Kson = Kson(),
-        val yamlSettings: Yaml = Yaml(),
-        val jsonSettings: Json = Json()
+        val ksonSettings: CompileTarget.Kson = CompileTarget.Kson(),
+        val yamlSettings: CompileTarget.Yaml = CompileTarget.Yaml(),
+        val jsonSettings: CompileTarget.Json = CompileTarget.Json(),
+        val tomlSettings: CompileTarget.Toml = CompileTarget.Toml(),
     )
 
     /**
@@ -36,6 +37,7 @@ interface KsonCoreTest {
      * @param expectedKsonFromAst the expected [CompileTarget.Kson] compiler output for the parsed [source]
      * @param expectedYaml the expected [CompileTarget.Yaml] compiler output for the parsed [source]
      * @param expectedJson the expected [CompileTarget.Json] compiler output for the parsed [source]
+     * @param expectedToml the expected [CompileTarget.Toml] compiler output for the parsed [source]
      * @param message optionally pass a custom failure message for this assertion
      * @param compileSettings optionally customize the [CompileSettings] for this test
      */
@@ -44,10 +46,12 @@ interface KsonCoreTest {
         expectedKsonFromAst: String,
         expectedYaml: String,
         expectedJson: String,
+        expectedToml: String,
         message: String? = null,
         compileSettings: CompileSettings = CompileSettings(
             jsonSettings = Json(retainEmbedTags = false),
-            yamlSettings = Yaml(retainEmbedTags = false)
+            yamlSettings = Yaml(retainEmbedTags = false),
+            tomlSettings = Toml(retainEmbedTags = false),
         ),
     ) {
         try {
@@ -64,6 +68,15 @@ interface KsonCoreTest {
             throw IllegalArgumentException(
                 "ERROR: The expected JSON in this test is invalid. Please fix the test's expectations.\n" +
                         "JSON parsing error:\n${e.message}", e
+            )
+        }
+        try {
+            // lightweight validation only; full TOML parsing is not in scope for these tests
+            KsonCore.parseToToml(source, compileSettings.tomlSettings)
+        } catch (e: Exception) {
+            throw IllegalArgumentException(
+                "ERROR: The expected TOML in this test is invalid. Please fix the test's expectations.\n" +
+                        "TOML parsing error:\n${e.message}", e
             )
         }
 
@@ -99,6 +112,14 @@ interface KsonCoreTest {
         assertEquals(
             expectedJson,
             jsonResult.json,
+            message
+        )
+
+        // now validate the Toml produced for this source
+        val tomlResult = KsonCore.parseToToml(source, compileSettings.tomlSettings)
+        assertEquals(
+            expectedToml,
+            tomlResult.toml,
             message
         )
 

@@ -11,7 +11,8 @@ class KsonCoreTestList : KsonCoreTest {
             """,
             "<>",
             "[]",
-            "[]"
+            "[]",
+            "value = []"
         )
     }
 
@@ -31,7 +32,8 @@ class KsonCoreTestList : KsonCoreTest {
                 [
                   "a string"
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      expectedToml = "value = [\"a string\"]"
         )
 
         assertParsesTo(
@@ -54,7 +56,8 @@ class KsonCoreTestList : KsonCoreTest {
                   43.1,
                   44.7
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      expectedToml = "value = [42.4, 43.1, 44.7]"
         )
 
         assertParsesTo(
@@ -78,7 +81,8 @@ class KsonCoreTestList : KsonCoreTest {
                   null
                 ]
             """.trimIndent(),
-            "should support an optional trailing comma in lists"
+            expectedToml = "value = [true, false, \"null\"]",
+            message = "should support an optional trailing comma in lists"
         )
 
         assertParsesTo(
@@ -111,7 +115,8 @@ class KsonCoreTestList : KsonCoreTest {
                     5.6
                   ]
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [true, false, [1.2, 3.4, 5.6]]"
         )
     }
 
@@ -131,7 +136,8 @@ class KsonCoreTestList : KsonCoreTest {
                 [
                   "a string"
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [\"a string\"]"
         )
 
         assertParsesTo(
@@ -156,7 +162,8 @@ class KsonCoreTestList : KsonCoreTest {
                   43.1,
                   44.7
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [42.4, 43.1, 44.7]"
         )
     }
 
@@ -166,8 +173,9 @@ class KsonCoreTestList : KsonCoreTest {
                 <>
             """.trimIndent(),
             "<>",
-            "[]",
-            "[]"
+      "[]",
+      "[]",
+      "value = []"
         )
 
         assertParsesTo("""
@@ -189,7 +197,8 @@ class KsonCoreTestList : KsonCoreTest {
                   "b",
                   "c"
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [\"a\", \"b\", \"c\"]"
         )
 
         assertParsesTo("""
@@ -215,7 +224,8 @@ class KsonCoreTestList : KsonCoreTest {
                   "b",
                   "c"
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [\"a\", \"b\", \"c\"]"
         )
     }
 
@@ -238,7 +248,8 @@ class KsonCoreTestList : KsonCoreTest {
                    []
                  ]
                ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [[[]]]"
         )
     }
 
@@ -273,7 +284,8 @@ class KsonCoreTestList : KsonCoreTest {
                     ]
                   }
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [{nestedDashList = [\"a\", \"b\", \"c\"]}]"
         )
     }
 
@@ -325,7 +337,8 @@ class KsonCoreTestList : KsonCoreTest {
                     "c"
                   ]
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [[\"a\", \"b\", [\"a1\", \"b1\", \"c1\"], \"c\"]]"
         )
     }
 
@@ -369,7 +382,20 @@ class KsonCoreTestList : KsonCoreTest {
                 "sublist"
               ]
             ]
-        """.trimIndent()
+        """.trimIndent(),
+            """
+              value = [
+                null,
+                true,
+                [
+                  "sublist"
+                ],
+                [
+                  "another",
+                  "sublist"
+                ]
+              ]
+              """.trimIndent()
         )
     }
 
@@ -404,7 +430,8 @@ class KsonCoreTestList : KsonCoreTest {
                   ],
                   "outer list elem 1"
                 ]
-            """.trimIndent()
+            """.trimIndent(),
+      "value = [[\"sub-list elem 1\", \"sub-list elem 2\"], \"outer list elem 1\"]"
         )
     }
 } 

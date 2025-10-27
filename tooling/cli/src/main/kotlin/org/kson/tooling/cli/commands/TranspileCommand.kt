@@ -80,3 +80,9 @@ class YamlCommand : TranspileCommand(
     targetFormat = "YAML",
     converter = Kson::toYaml
 )
+
+class TomlCommand : TranspileCommand(
+    name = "toml",
+    targetFormat = "TOML",
+    converter = Kson::toToml
+)

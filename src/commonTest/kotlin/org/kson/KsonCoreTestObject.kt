@@ -9,6 +9,7 @@ class KsonCoreTestObject : KsonCoreTest {
             "{    }",
             "{}",
             "{}",
+            "{}",
             "{}"
         )
     }
@@ -58,6 +59,12 @@ class KsonCoreTestObject : KsonCoreTest {
             expectKsonRootObjectAst,
             expectedYamlRootObject,
             expectedJsonRootObject
+            ,
+            expectedToml = """
+            key = "val"
+            "string key" = 66.3
+            hello = "y'all"
+            """.trimIndent()
         )
     }
 
@@ -129,6 +136,11 @@ class KsonCoreTestObject : KsonCoreTest {
                     "ObjB4": 4
                   }
                 ]
+            """.trimIndent(),
+            """
+            [[{ObjA1 = 1}]]
+            [[{ObjA2 = ["v", "v", "v"]}]]
+            [[{ObjA3 = 3}]]
             """.trimIndent()
         )
     }
@@ -159,6 +171,10 @@ class KsonCoreTestObject : KsonCoreTest {
                   "first": "value",
                   "second": "this is a string with a\nraw newline in it and at its end\n"
                 }
+            """.trimIndent(),
+            """
+            first = "value"
+            second = "this is a string with a raw newline in it and at its end"
             """.trimIndent()
         )
     }
@@ -187,6 +203,11 @@ class KsonCoreTestObject : KsonCoreTest {
                   "true": "true",
                   "null": "null"
                 }
+            """.trimIndent(),
+            """
+            "false" = "false"
+            "true" = "true"
+            "null" = "null"
             """.trimIndent()
         )
     }
@@ -279,7 +300,15 @@ class KsonCoreTestObject : KsonCoreTest {
                   },
                   "unnested_key": 44
                 }
+            """.trimIndent(),
+            """
+            [key]
+            nested_key = 10
+            another_nest_key = 3
+
+            unnested_key = 44
             """.trimIndent()
         )
+        
     }
 } 

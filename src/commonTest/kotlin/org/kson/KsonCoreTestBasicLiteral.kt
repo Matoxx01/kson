@@ -11,7 +11,8 @@ class KsonCoreTestBasicLiteral : KsonCoreTest {
             """,
             "true",
             "true",
-            "true"
+            "true",
+            "value = true"
         )
 
         assertParsesTo(
@@ -20,7 +21,8 @@ class KsonCoreTestBasicLiteral : KsonCoreTest {
             """,
             "false",
             "false",
-            "false"
+            "false",
+            "value = false"
         )
     }
 
@@ -32,7 +34,8 @@ class KsonCoreTestBasicLiteral : KsonCoreTest {
             """,
             "null",
             "null",
-            "null"
+            "null",
+            "value = \"null\""
         )
     }
 } 

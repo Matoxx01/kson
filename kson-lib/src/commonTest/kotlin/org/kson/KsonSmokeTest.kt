@@ -95,6 +95,22 @@ class KsonSmokeTest {
         assertIs<Result.Failure>(result)
         assertTrue(result.errors.isNotEmpty())
     }
+
+    @Test
+    fun testToToml_success() {
+        val input = """{"name": "test", "value": 123}"""
+        val result = Kson.toToml(input)
+        assertIs<Result.Success>(result)
+        assertTrue(result.output.isNotEmpty())
+    }
+    
+    @Test
+    fun testToToml_failure() {
+        val input = """{"invalid": }"""
+        val result = Kson.toToml(input)
+        assertIs<Result.Failure>(result)
+        assertTrue(result.errors.isNotEmpty())
+    }
     
     @Test
     fun testAnalyze() {
