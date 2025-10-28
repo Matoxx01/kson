@@ -47,7 +47,12 @@ class KsonCoreTestObject : KsonCoreTest {
             expectKsonRootObjectAst,
             expectedYamlRootObject,
             expectedJsonRootObject,
-            "should parse as a root object when optional root parens are provided"
+            expectedToml = """
+            key = "val"
+            "string key" = 66.3
+            hello = "y'all"
+            """.trimIndent(),
+            message = "should parse as a root object when optional root parens are provided"
         )
 
         assertParsesTo(
@@ -138,9 +143,13 @@ class KsonCoreTestObject : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-            [[{ObjA1 = 1}]]
-            [[{ObjA2 = ["v", "v", "v"]}]]
-            [[{ObjA3 = 3}]]
+            value = [
+              {ObjA1 = 1},
+              {ObjA2 = [{nested1 = "v"}, {nested2 = "v"}, {nested3 = "v"}]},
+              {ObjA3 = 3},
+              "A string",
+              {ObjB4 = 4}
+            ]
             """.trimIndent()
         )
     }
@@ -231,7 +240,11 @@ class KsonCoreTestObject : KsonCoreTest {
                   "a": "b"
                 }
             """.trimIndent(),
-            "should parse as a root object when optional root parens are provided"
+            expectedToml = """
+            #comment
+            a = "b"
+            """.trimIndent(),
+            message = "should parse as a root object when optional root parens are provided"
         )
     }
 
@@ -264,7 +277,12 @@ class KsonCoreTestObject : KsonCoreTest {
                  "hello": "y'all"
                }
             """.trimIndent(),
-            "should parse object ignoring optional commas, even trailing"
+            expectedToml = """
+            key = "val"
+            "string key" = 66.3
+            hello = "y'all"
+            """.trimIndent(),
+            message = "should parse object ignoring optional commas, even trailing"
         )
     }
 
@@ -302,10 +320,8 @@ class KsonCoreTestObject : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-            [key]
-            nested_key = 10
-            another_nest_key = 3
-
+            key.nested_key = 10
+            key.another_nest_key = 3
             unnested_key = 44
             """.trimIndent()
         )

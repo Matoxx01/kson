@@ -79,6 +79,25 @@ object Kson {
     }
 
     /**
+     * Converts Kson to Toml
+     *
+     * @param kson The Kson source to convert
+     * @param retainEmbedTags Whether to retain the embed tags in the result
+     * @return A Result containing either the Toml output or error messages
+     */
+    fun toToml(kson: String, retainEmbedTags: Boolean = true): Result {
+        val compileConfig = CompileTarget.Toml(
+            retainEmbedTags = retainEmbedTags,
+        )
+        val tomlParseResult = KsonCore.parseToToml(kson, compileConfig)
+        return if (tomlParseResult.hasErrors()) {
+            Result.Failure(publishMessages(tomlParseResult.messages))
+        } else {
+            Result.Success(tomlParseResult.toml!!)
+        }
+    }
+
+    /**
      * Statically analyze the given Kson and return an [Analysis] object containing any messages generated along with a
      * tokenized version of the source.  Useful for tooling/editor support.
      */

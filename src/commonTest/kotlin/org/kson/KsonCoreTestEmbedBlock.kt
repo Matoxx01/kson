@@ -376,8 +376,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock:
-                  embedContent = "content"
+                embedBlock.embedContent = "content\\n"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -407,9 +406,8 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock:
-                  embedContent = "content"
-                  unrelatedKey = "is not an embed block"
+                embedBlock.embedContent = "content\\n"
+                embedBlock.unrelatedKey = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -452,9 +450,8 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock:
-                  embedContent = { not = content }
-                  unrelatedKey = "is not an embed block"
+                embedBlock.embedContent.not = "content"
+                embedBlock.unrelatedKey = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -495,8 +492,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock:
-                embedContent = "embeddedEmbed: %\nEMBED CONTENT\n%%\n"
+                embedBlock.embedContent = "embeddedEmbed: %\nEMBED CONTENT\n%%\n"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -529,8 +525,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock:
-                  embedContent = "embeddedEmbed: ${'$'}\nEMBED WITH %\\% CONTENT\n${'$'}${'$'}\n"
+                embedBlock.embedContent = "embeddedEmbed: ${'$'}\nEMBED WITH %\\% CONTENT\n${'$'}${'$'}\n"
             """.trimIndent(),
             compileSettings = compileSettings
         )

@@ -38,11 +38,9 @@ class KsonCoreTestString : KsonCoreTest {
             """.trimMargin(),
             """
             |"This is a string with raw, unescaped whitespace \t\n\ttabbed-indented second line"
-            """.trimMargin()
-            ,
+            """.trimMargin(),
             """
-            value = "This is a string with raw, unescaped whitespace \t
-            	 tabbed-indented second line"
+            value = "This is a string with raw, unescaped whitespace \\t \\ttabbed-indented second line"
             """.trimIndent()
         )
     }
@@ -83,7 +81,7 @@ class KsonCoreTestString : KsonCoreTest {
                 "string with \\ and \""
             """.trimIndent(),
             """
-                "string with \\ and \""
+                value = "string with \\ and \""
             """.trimIndent()
         )
 
@@ -102,7 +100,7 @@ class KsonCoreTestString : KsonCoreTest {
                 "string with \\\""
             """.trimIndent(),
             """
-                "string with \\\""
+                value = "string with \\\""
             """.trimIndent()
         )
     }
@@ -146,7 +144,7 @@ class KsonCoreTestString : KsonCoreTest {
                 "\"\""
             """.trimIndent(),
             """
-                value = ""
+                value = "\"\""
             """.trimIndent()
         )
 
@@ -174,18 +172,20 @@ class KsonCoreTestString : KsonCoreTest {
     fun testBackslashSequences() {
         // Test sequences of backslashes not followed by delimiters
         assertParsesTo(
-            "value = \"\\\\n\"",
             """
-                '\\\\n'
+                "\\n"
             """.trimIndent(),
             """
-                "\\\\n"
+                '\\n'
             """.trimIndent(),
             """
-                "\\\\n"
+                "\\n"
             """.trimIndent(),
             """
-                "\\\\n"
+                "\\n"
+            """.trimIndent(),
+            """
+                value = "\\n"
             """.trimIndent()
         )
 
@@ -204,7 +204,7 @@ class KsonCoreTestString : KsonCoreTest {
                 "\\"
             """.trimIndent(),
             """
-                "\\"
+                value = "\\"
             """.trimIndent()
         )
     }
@@ -225,7 +225,7 @@ class KsonCoreTestString : KsonCoreTest {
                "水滴石穿"
             """.trimIndent(),
             """
-                "水滴石穿"
+                value = "水滴石穿"
             """.trimIndent()
         )
     }

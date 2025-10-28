@@ -58,8 +58,7 @@ class KsonCoreTestComment : KsonCoreTest {
             }
         """.trimIndent(),
             """
-            [key]
-            value = 42
+            key.value = 42
         """.trimIndent(),
 
             compileSettings = CompileSettings(
@@ -155,7 +154,7 @@ class KsonCoreTestComment : KsonCoreTest {
                     # first comment
                     # second comment
                     # third comment
-                    value = ["one", "two"] 
+                    value = ["one", "two"]
             """.trimIndent()
         )
     }
@@ -472,6 +471,12 @@ class KsonCoreTestComment : KsonCoreTest {
                   "second_element"
                 ]
             """.trimIndent(),
+            """
+                # comment on first_element
+                value = "first_element"
+                # comment on second_element
+                value = "second_element"
+            """.trimIndent(),
             "should always anchor dash-delimited list comments to the elements " +
                     "since there's no syntactic way to identify a comment on the whole list"
         )
@@ -563,7 +568,7 @@ class KsonCoreTestComment : KsonCoreTest {
             """.trimIndent(),
             """
                     # a list of lists
-                    value = [ [1.2, 2.2, 3.2], [[10.2], [4.2, 5.2], [9.2, 8.2]] ]
+                    value = [[1.2, 2.2, 3.2], [[10.2], [4.2, 5.2], [9.2, 8.2]]]
             """.trimIndent(),
             "should preserve comments in nested lists"
         )
@@ -635,8 +640,9 @@ class KsonCoreTestComment : KsonCoreTest {
                     # leading
                     # trailing list brace
                     # trailing "one"
-                    value1 = "one"
-                    value2 = "two"
+                    value = "one"
+                    # trailing "two"
+                    value = "two"
             """.trimIndent()
         )
     }

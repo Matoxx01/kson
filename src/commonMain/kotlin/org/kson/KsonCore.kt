@@ -116,6 +116,17 @@ object KsonCore {
     }
 
     /**
+     * Parse the given Kson [source] and compile it to Toml
+     *
+     * @param source The Kson source to parse
+     * @param compileConfig a [CompileTarget.Toml] object with this compilation's config
+     * @return A [TomlParseResult]
+     */
+    fun parseToToml(source: String, compileConfig: Toml = Toml()): TomlParseResult {
+        return TomlParseResult(parseToAst(source, compileConfig.coreConfig), compileConfig)
+    }
+
+    /**
      * Parse the given Kson [source] and compile it to Json
      *
      * @param source The Kson source to parse
@@ -235,6 +246,15 @@ class JsonParseResult(
     val json: String? = astParseResult.ast?.toSource(AstNode.Indent(), compileConfig)
 }
 
+class TomlParseResult(
+    private val astParseResult: AstParseResult,
+    compileConfig: Toml
+) : ParseResult by astParseResult {
+    /**
+     * The Toml compiled from some Kson source, or null if there were errors trying to parse
+     */
+    val toml: String? = astParseResult.ast?.toSource(AstNode.Indent(), compileConfig)
+}
 
 /**
  * Type to denote a supported Kson compilation target and hold the compilation's configuration
@@ -282,6 +302,19 @@ sealed class CompileTarget(val coreConfig: CoreCompileConfig) {
         // Json does not support comments
         override val preserveComments: Boolean = false
     }
+
+    /**
+     * Compile target for Toml transpilation
+     *
+     * @param preserveComments If true, comments will be preserved in the output
+     * @param retainEmbedTags If true, embed blocks will be compiled to objects containing both tag and content
+     * @param coreCompileConfig the [CoreCompileConfig] for this compile
+     */
+    class Toml(
+        override val preserveComments: Boolean = true,
+        val retainEmbedTags: Boolean = true,
+        coreCompileConfig: CoreCompileConfig = CoreCompileConfig()
+    ) : CompileTarget(coreCompileConfig)
 }
 
 /**

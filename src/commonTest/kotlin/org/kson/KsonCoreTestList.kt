@@ -385,7 +385,7 @@ class KsonCoreTestList : KsonCoreTest {
         """.trimIndent(),
             """
               value = [
-                null,
+                "null",
                 true,
                 [
                   "sublist"
