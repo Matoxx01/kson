@@ -66,6 +66,86 @@ fun escapeRawWhitespace(ksonEscapedString: String): String {
 }
 
 /**
+ * Normalizes whitespace for TOML. Handles both raw characters and already-escaped sequences.
+ * - Converts newlines (literal or \n) and carriage returns (literal or \r) to spaces
+ * - Escapes literal tabs or preserves \t sequences
+ * - Escapes literal quotes or preserves \" sequences
+ * - Preserves backslash sequences
+ * TOML basic strings don't support multi-line content.
+ */
+fun normalizeWhitespaceForToml(str: String): String {
+    val sb = StringBuilder(str.length)
+    var lastWasSpace = false
+
+    var i = 0
+    while (i < str.length) {
+        val char = str[i]
+        
+        // Handle escape sequences that start with backslash
+        if (char == '\\' && i + 1 < str.length) {
+            val nextChar = str[i + 1]
+            when (nextChar) {
+                'n', 'r' -> {
+                    // Preserve \n and \r escape sequences as-is
+                    // TOML basic strings support these escape sequences
+                    sb.append(char)      // backslash
+                    sb.append(nextChar)  // n or r
+                    lastWasSpace = false
+                    i += 2
+                }
+                else -> {
+                    // Preserve all other escape sequences as-is (\t, \", \\, etc.)
+                    sb.append(char)      // backslash
+                    sb.append(nextChar)  // next character
+                    lastWasSpace = false
+                    i += 2
+                }
+            }
+        }
+        // Handle literal newlines and carriage returns - convert to escape sequences
+        else if (char == '\n') {
+            sb.append("\\n")
+            lastWasSpace = false
+            i++
+        }
+        else if (char == '\r') {
+            sb.append("\\r")
+            lastWasSpace = false
+            i++
+        }
+        // Handle literal tabs - escape them
+        else if (char == '\t') {
+            sb.append("\\t")
+            lastWasSpace = false
+            i++
+        }
+        // Handle literal double quotes - escape them
+        else if (char == '"') {
+            sb.append("\\\"")
+            lastWasSpace = false
+            i++
+        }
+        // Handle spaces - collapse multiple into one
+        else if (char == ' ') {
+            if (!lastWasSpace) {
+                sb.append(' ')
+                lastWasSpace = true
+            }
+            i++
+        }
+        // Handle all other characters
+        else {
+            sb.append(char)
+            lastWasSpace = false
+            i++
+        }
+    }
+
+    // Trim only leading spaces, preserve trailing
+    return sb.toString().trimStart()
+}
+
+/**
  * Appends a Unicode escape sequence (\uXXXX) for the given code point.
  * JSON requires certain characters to be escaped as Unicode sequences:
  * - Control characters (U+0000 to U+001F)
@@ -202,4 +282,75 @@ private fun handleUnicodeEscape(input: String): Pair<CharArray, Int> {
 
     // Regular Unicode character or unpaired surrogate - consumed 6 chars
     return Pair(charArrayOf(codePoint.toChar()), 6)
+}
+
+/**
+ * Escape a string for TOML basic strings
+ * TOML basic strings support escape sequences like \n, \t, \", \\
+ * but cannot contain literal newlines - they must be escaped
+ * 
+ * Note: This function does DOUBLE escaping - a newline becomes \\n (two backslashes)
+ * because TOML parser will unescape it to \n (one backslash + n)
+ */
+fun escapeForToml(content: String): String {
+    val sb = StringBuilder(content.length + 2)
+    
+    var i = 0
+    while (i < content.length) {
+        val char = content[i]
+        when {
+            char == '"' -> {
+                sb.append('\\')
+                sb.append('"')
+            }
+            char == '\\' -> {
+                // Four backslashes -> TOML reads as \\
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('\\')
+            }
+            char == '\b' -> {
+                // Two backslashes + b -> TOML reads as \b
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('b')
+            }
+            char == '\u000C' -> {
+                // Two backslashes + f -> TOML reads as \f
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('f')
+            }
+            char == '\n' -> {
+                // Two backslashes + n -> TOML reads as \n
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('n')
+            }
+            char == '\r' -> {
+                // Two backslashes + r -> TOML reads as \r
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('r')
+            }
+            char == '\t' -> {
+                // Two backslashes + t -> TOML reads as \t
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('t')
+            }
+            char.code < 0x20 -> {
+                // Other control characters - use unicode escape
+                sb.append('\\')
+                sb.append('\\')
+                sb.append('u')
+                sb.append(String.format("%04x", char.code))
+            }
+            else -> sb.append(char)
+        }
+        i++
+    }
+    
+    return sb.toString()
 }
