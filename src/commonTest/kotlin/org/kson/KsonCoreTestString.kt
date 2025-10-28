@@ -241,10 +241,10 @@ class KsonCoreTestString : KsonCoreTest {
                 Y
             """.trimIndent(),
             """
-                \"Y\"
+                "Y"
             """.trimIndent(),
             """
-                \"Y\"
+                "Y"
             """.trimIndent(),
             "value = \"Y\"")
 
