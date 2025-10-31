@@ -66,6 +66,50 @@ fun escapeRawWhitespace(ksonEscapedString: String): String {
 }
 
 /**
+ * Convert newline and carriage return escape sequences to spaces for TOML single-line strings.
+ * Collapses consecutive sequences into a single space.
+ */
+fun convertNewlineEscapesToSpaces(str: String): String {
+    val sb = StringBuilder(str.length)
+    var lastWasSpace = false
+    
+    var i = 0
+    while (i < str.length) {
+        val char = str[i]
+        
+        if (char == '\\' && i + 1 < str.length) {
+            val nextChar = str[i + 1]
+            if (nextChar == 'n' || nextChar == 'r') {
+                // Convert \n or \r to space
+                if (!lastWasSpace) {
+                    sb.append(' ')
+                    lastWasSpace = true
+                }
+                i += 2
+            } else {
+                // Keep other escapes as-is
+                sb.append(char)
+                sb.append(nextChar)
+                lastWasSpace = false
+                i += 2
+            }
+        } else if (char == ' ') {
+            if (!lastWasSpace) {
+                sb.append(' ')
+                lastWasSpace = true
+            }
+            i++
+        } else {
+            sb.append(char)
+            lastWasSpace = false
+            i++
+        }
+    }
+    
+    return sb.toString()
+}
+
+/**
  * Normalizes whitespace for TOML. Handles both raw characters and already-escaped sequences.
  * - Converts newlines (literal or \n) and carriage returns (literal or \r) to spaces
  * - Escapes literal tabs or preserves \t sequences
@@ -93,8 +137,26 @@ fun normalizeWhitespaceForToml(str: String): String {
                     lastWasSpace = false
                     i += 2
                 }
+                't' -> {
+                    // Double-escape \t for TOML: \t becomes \\t (literal backslash followed by t)
+                    sb.append("\\\\t")
+                    lastWasSpace = false
+                    i += 2
+                }
+                '"' -> {
+                    // Preserve \" as-is
+                    sb.append("\\\"")
+                    lastWasSpace = false
+                    i += 2
+                }
+                '\\' -> {
+                    // Preserve \\ as-is
+                    sb.append("\\\\")
+                    lastWasSpace = false
+                    i += 2
+                }
                 else -> {
-                    // Preserve all other escape sequences as-is (\t, \", \\, etc.)
+                    // Preserve all other escape sequences as-is
                     sb.append(char)      // backslash
                     sb.append(nextChar)  // next character
                     lastWasSpace = false
@@ -102,15 +164,12 @@ fun normalizeWhitespaceForToml(str: String): String {
                 }
             }
         }
-        // Handle literal newlines and carriage returns - convert to escape sequences
-        else if (char == '\n') {
-            sb.append("\\n")
-            lastWasSpace = false
-            i++
-        }
-        else if (char == '\r') {
-            sb.append("\\r")
-            lastWasSpace = false
+        // Handle literal newlines and carriage returns - convert to space
+        else if (char == '\n' || char == '\r') {
+            if (!lastWasSpace) {
+                sb.append(' ')
+                lastWasSpace = true
+            }
             i++
         }
         // Handle literal tabs - escape them
@@ -141,8 +200,39 @@ fun normalizeWhitespaceForToml(str: String): String {
         }
     }
 
-    // Trim only leading spaces, preserve trailing
-    return sb.toString().trimStart()
+    // Trim leading and trailing spaces
+    return sb.toString().trim()
+}
+
+/**
+ * Escapes a JSON-escaped string for TOML.
+ * TOML interprets escape sequences like \n as newlines.
+ * If we want to preserve the literal \n in the content, we need to double-escape: \\n
+ * 
+ * This function takes output from renderForJsonString (which has \n, \t, etc.)
+ * and doubles the backslashes so TOML preserves them as literals.
+ */
+fun escapeJsonStringForToml(jsonEscapedString: String): String {
+    val sb = StringBuilder(jsonEscapedString.length)
+    
+    var i = 0
+    while (i < jsonEscapedString.length) {
+        val char = jsonEscapedString[i]
+        
+        if (char == '\\' && i + 1 < jsonEscapedString.length) {
+            val nextChar = jsonEscapedString[i + 1]
+            // Double-escape all escape sequences for TOML
+            sb.append('\\')
+            sb.append('\\')
+            sb.append(nextChar)
+            i += 2
+        } else {
+            sb.append(char)
+            i++
+        }
+    }
+    
+    return sb.toString()
 }
 
 /**

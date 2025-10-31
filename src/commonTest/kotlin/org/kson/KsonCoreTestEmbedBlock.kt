@@ -376,7 +376,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock.embedContent = "content\\n"
+                embedBlock.embedContent = "content\n"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -406,7 +406,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedBlock.embedContent = "content\\n"
+                embedBlock.embedContent = "content\n"
                 embedBlock.unrelatedKey = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
