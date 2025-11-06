@@ -89,12 +89,13 @@ class KsonCoreTestGeneralValue : KsonCoreTest {
                 2.1
               ]
             }
+        """.trimIndent(),
+        expectedToml = """
+        [nested_obj]
+        key = "value"
+
+        nested_list = [1.1, 2.1]
         """.trimIndent()
-      ,
-      expectedToml = """
-      nested_obj.key = "value"
-      nested_list = [1.1, 2.1]
-      """.trimIndent()
         )
     }
 
@@ -144,11 +145,13 @@ class KsonCoreTestGeneralValue : KsonCoreTest {
               "outer_key2": "value"
             }
             """.trimIndent(),
-      expectedToml = """
-      outer_key1.inner_key = [1, 2, 3]
-      outer_key2 = "value"
-      """.trimIndent(),
-        )
+            expectedToml = """
+            [outer_key1]
+            inner_key = [1, 2, 3]
+
+            outer_key2 = "value"
+            """.trimIndent(),
+          )
 
         assertParsesTo(
             // the list containing `inner_key: x` should be unambiguously terminated

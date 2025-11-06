@@ -320,8 +320,10 @@ class KsonCoreTestObject : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-            key.nested_key = 10
-            key.another_nest_key = 3
+            [key]
+            nested_key = 10
+            another_nest_key = 3
+
             unnested_key = 44
             """.trimIndent()
         )

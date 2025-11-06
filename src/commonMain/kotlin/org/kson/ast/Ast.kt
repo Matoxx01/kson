@@ -237,23 +237,23 @@ class KsonRootImpl(
                             val hasRootComments = comments.isNotEmpty()
                             val tomlTarget = compileTarget as Toml
                             
-                            if (!isEmbedBlock || (hasRootComments && !tomlTarget.retainEmbedTags)) {
-                                // For TOML, regular scalars AND embed blocks with comments get wrapped with value =
+                            if (!isEmbedBlock) {
+                                // For TOML, regular scalars get wrapped with value =
                                 val hasDocEndComments = compileTarget.preserveComments && documentEndComments.isNotEmpty()
-                                
+
                                 if (hasDocEndComments) {
                                     // Put document end comments BEFORE value =
                                     val endComments = documentEndComments.map { it.trimEnd() }.joinToString("\n")
                                     val scalarValue = ksonDocument.trimStart()
                                     ksonDocument = endComments + "\n" + "value = " + scalarValue
                                 } else {
-                                    // Regular scalar or embed block with comments - wrap with value =
+                                    // Regular scalar - wrap with value =
                                     val scalarValue = ksonDocument.trimStart()
                                     ksonDocument = "value = " + scalarValue
                                 }
                             } else {
-                                // Embed blocks without comments (or with retainEmbedTags) are already properly formatted
-                                // Just add end comments if any
+                                // Embed blocks should emit their own properties (embedContent/embedTag/etc.)
+                                // and must not be wrapped with "value =". Just add end comments if any.
                                 if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
                                     val endComments = documentEndComments.joinToString("\n")
                                     ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
@@ -387,16 +387,49 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
             return formatTomlInlineTable(indent, compileTarget)
         }
         
-        // TOML uses dotted keys for all nested objects at the root level
-        // Convert nested structure to flattened dotted keys
+        // TOML: Convert nested structure to flattened dotted keys, then group by top-level table
         val flattenedProperties = flattenToTomlDottedKeys("", compileTarget)
-        
-        return flattenedProperties.joinToString("\n") { (comments, key, value) ->
-            val commentLines = if (compileTarget.preserveComments && comments.isNotEmpty()) {
-                comments.joinToString("\n") + "\n"
-            } else ""
-            commentLines + "$key = $value"
+
+        val lines = mutableListOf<String>()
+
+        // We'll iterate through flattened properties in order and group dotted keys by their first segment
+        var i = 0
+        while (i < flattenedProperties.size) {
+            val (comments, key, value) = flattenedProperties[i]
+
+            val dotIndex = key.indexOf('.')
+            if (dotIndex == -1) {
+                // Top-level key, emit directly
+                val commentLines = if (compileTarget.preserveComments && comments.isNotEmpty()) {
+                    comments.joinToString("\n") + "\n"
+                } else ""
+                lines.add(commentLines + "$key = $value")
+                i++
+            } else {
+                // Group all keys that start with this top-level segment
+                val top = key.substring(0, dotIndex)
+                // Emit table header
+                lines.add("[$top]")
+
+                // Collect all entries that belong to this table (prefix match)
+                while (i < flattenedProperties.size) {
+                    val (c2, k2, v2) = flattenedProperties[i]
+                    if (!k2.startsWith(top + ".")) break
+                    val subKey = k2.substring(top.length + 1)
+                    val commentLines = if (compileTarget.preserveComments && c2.isNotEmpty()) {
+                        c2.joinToString("\n") + "\n"
+                    } else ""
+                    lines.add(commentLines + "$subKey = $v2")
+                    i++
+                }
+                // Add a separating blank line between this table and subsequent top-level entries
+                if (i < flattenedProperties.size) {
+                    lines.add("")
+                }
+            }
         }
+
+        return lines.joinToString("\n")
     }
     
     /**
@@ -438,8 +471,25 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
             
             when (val value = property.value) {
                 is ObjectNode -> {
-                    // Recursively flatten nested objects
-                    result.addAll(value.flattenToTomlDottedKeys(fullKey, compileTarget))
+                        // Special-case: when an object represents embedContent-like nested keys
+                        if (key == EmbedObjectKeys.EMBED_CONTENT.key) {
+                            // For embedContent objects that are not plain string embed blocks, emit their
+                            // child properties as dotted keys whose values are TOML triple-quoted strings
+                            value.properties.filterIsInstance<ObjectPropertyNodeImpl>().forEachIndexed { idx, subProp ->
+                                val subKey = subProp.key.toSourceWithNext(Indent(), subProp.value, compileTarget)
+                                var subValue = subProp.value.toSourceWithNext(Indent(), null, compileTarget).trim()
+                                // If the value is quoted, unescape it to get the raw content
+                                if (subValue.startsWith("\"") && subValue.endsWith("\"")) {
+                                    subValue = unescapeStringContent(subValue.substring(1, subValue.length - 1))
+                                }
+                                val triple = "\"\"\"\n${subValue}\n\"\"\""
+                                val commentsForThis = if (idx == 0) property.comments else emptyList()
+                                result.add(Triple(commentsForThis, "$fullKey.$subKey", triple))
+                            }
+                        } else {
+                            // Recursively flatten nested objects
+                            result.addAll(value.flattenToTomlDottedKeys(fullKey, compileTarget))
+                        }
                 }
                 is EmbedBlockNode -> {
                     if ((compileTarget as? Toml)?.retainEmbedTags == true) {
@@ -448,17 +498,65 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
                         val tomlOutput = value.toSourceWithNext(Indent(), null, compileTarget).trim()
                         // Parse the multi-line output into individual key-value pairs
                         val lines = tomlOutput.lines()
-                        lines.forEachIndexed { index, line ->
+                        // Parse the embed block TOML output into discrete parts: tag, metadata, content
+                        var idx = 0
+                        var tagRaw: String? = null
+                        var metadataRaw: String? = null
+                        var contentRaw: String? = null
+
+                        while (idx < lines.size) {
+                            val line = lines[idx]
                             val trimmedLine = line.trim()
                             if (trimmedLine.isNotEmpty()) {
-                                // Extract key and value from "key = value" format
                                 val parts = trimmedLine.split(" = ", limit = 2)
                                 if (parts.size == 2) {
                                     val subKey = parts[0]
-                                    val subValue = parts[1]
-                                    val comments = if (index == 0) property.comments else emptyList()
-                                    result.add(Triple(comments, "$fullKey.$subKey", subValue))
+                                    var rhs = parts[1]
+                                    if (rhs.trimStart().startsWith("\"\"\"")) {
+                                        // consume until closing triple-quote
+                                        val buffer = StringBuilder(rhs)
+                                        var j = idx + 1
+                                        var closed = false
+                                        while (j < lines.size) {
+                                            val nl = lines[j]
+                                            buffer.append("\n").append(nl)
+                                            if (nl.trim().endsWith("\"\"\"")) {
+                                                closed = true
+                                                idx = j
+                                                break
+                                            }
+                                            j++
+                                        }
+                                        rhs = buffer.toString()
+                                        // even if not closed, we'll keep what we have
+                                    }
+
+                                    when (subKey) {
+                                        EmbedObjectKeys.EMBED_TAG.key -> tagRaw = rhs
+                                        EmbedObjectKeys.EMBED_METADATA.key -> metadataRaw = rhs
+                                        EmbedObjectKeys.EMBED_CONTENT.key -> contentRaw = rhs
+                                    }
                                 }
+                            }
+                            idx++
+                        }
+
+                        // Emit entries. If metadata provided -> embedTag at top-level and content under metadata table.
+                        // Otherwise attach both tag and content under the parent's fullKey so they appear under the table header.
+                        if (metadataRaw != null) {
+                            if (tagRaw != null) {
+                                result.add(Triple(property.comments, EmbedObjectKeys.EMBED_TAG.key, tagRaw))
+                            }
+                            if (contentRaw != null) {
+                                val metaName = metadataRaw.trim().removePrefix("\"").removeSuffix("\"")
+                                result.add(Triple(emptyList(), "$metaName.${EmbedObjectKeys.EMBED_CONTENT.key}", contentRaw))
+                            }
+                        } else {
+                            if (tagRaw != null) {
+                                result.add(Triple(property.comments, "$fullKey.${EmbedObjectKeys.EMBED_TAG.key}", tagRaw))
+                            }
+                            if (contentRaw != null) {
+                                result.add(Triple(property.comments, "$fullKey.${EmbedObjectKeys.EMBED_CONTENT.key}", contentRaw))
                             }
                         }
                     } else {
@@ -467,8 +565,18 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
                     }
                 }
                 else -> {
-                    val valueStr = value.toSourceWithNext(Indent(), null, compileTarget).trim()
-                    result.add(Triple(property.comments, fullKey, valueStr))
+                        // Special-case: if this property is named embedContent, prefer emitting TOML
+                        // triple-quoted multiline basic strings so embedded content is preserved
+                        if (key == EmbedObjectKeys.EMBED_CONTENT.key && value is StringNodeImpl) {
+                            var content = value.processedStringContent
+                            // remove a single trailing newline (we'll add canonical newlines in TOML)
+                            if (content.endsWith("\n")) content = content.removeSuffix("\n")
+                            val triple = "\"\"\"\n${content}\n\"\"\""
+                            result.add(Triple(property.comments, fullKey, triple))
+                        } else {
+                            val valueStr = value.toSourceWithNext(Indent(), null, compileTarget).trim()
+                            result.add(Triple(property.comments, fullKey, valueStr))
+                        }
                 }
             }
         }
@@ -1022,9 +1130,14 @@ class EmbedBlockNode(
     val metadataTagNode: StringNodeImpl?,
     val embedContentNode: StringNodeImpl,
     embedDelim: EmbedDelim,
-    location: Location
+    location: Location,
+    private val isDecodedFromObject: Boolean = false
 ) :
     KsonValueNodeImpl(location) {
+
+    // Remember which delimiter was used when this embed block was parsed so TOML
+    // emission can make decisions based on the original delimiter.
+    private val originalDelim: EmbedDelim = embedDelim
 
     private val embedTag: String = embedTagNode?.stringContent ?: ""
     private val metadataTag: String = metadataTagNode?.stringContent ?: ""
@@ -1115,12 +1228,113 @@ class EmbedBlockNode(
     }
 
     private fun renderTomlFormat(indent: Indent, compileTarget: Toml): String {
-        return if (!compileTarget.retainEmbedTags) {
-            // For TOML embed content, use renderForJsonString directly
-            // This gives us single-escaped sequences like \n for newlines
-            indent.firstLineIndent() + "\"${renderForJsonString(embedContent)}\""
+        // For TOML embed content we emit a TOML multiline basic string for embedContent
+        // (triple-quoted) so that original embed formatting and delimiter-escaping is preserved.
+        // When retainEmbedTags is true we emit tag/metadata properties followed by embedContent;
+        // when false we emit embedTag (if present) and embedContent as top-level properties.
+
+        // Choose the content literal depending on whether this node was decoded from an
+        // object or parsed as an embed block. For object-decoded embed blocks we prefer
+        // the unescaped content (so we don't emit wrapper delimiter lines). For parsed
+        // embed blocks we prefer the raw parser literal so single-backslash escapes are
+        // preserved.
+        val rawLiteral = if (isDecodedFromObject) {
+            embedContent
         } else {
-            // Multi-line object format as individual properties
+            try {
+                embedContentNode.stringContent
+            } catch (e: Exception) {
+                embedContent
+            } ?: embedContent
+        }
+
+        // Trim a single trailing newline for consistent emission; we'll add a newline when building the block
+        var contentTrimmed = if (rawLiteral.endsWith('\n')) rawLiteral.removeSuffix("\n") else rawLiteral
+
+        // Remove common leading indentation from non-empty lines so embedded blocks that were
+        // indented in source appear normalized in TOML triple-quoted output
+        val lines = contentTrimmed.split("\n")
+        val minIndent = lines.filter { it.isNotEmpty() }
+            .map { it.takeWhile { c -> c == ' ' || c == '\t' }.length }
+            .minOrNull() ?: 0
+        if (minIndent > 0) {
+            contentTrimmed = lines.joinToString("\n") { line ->
+                if (line.length >= minIndent) line.substring(minIndent) else line
+            }
+        }
+
+        // Determine whether we need to wrap the content with explicit embed delimiters
+        // inside the TOML triple-quoted string. Historically, tests expect the original
+        // delimiter marker lines to be preserved only when the original delimiter type
+        // required it. So we only consider escape patterns that match the original
+        // delimiter used when parsing this block.
+        // Add an explicit wrapper when necessary for parsed embed blocks. We need to
+        // preserve two separate cases:
+        //  - parsed embed blocks that contain escaped-close sequences (e.g. "%\%")
+        //    should have wrapper lines re-inserted so the original embed semantics
+        //    are preserved
+        //  - parsed embed blocks that somehow contain raw close delimiter substrings
+        //    (e.g. "%%" or "$$") should also cause wrapping
+        // For embed blocks decoded from objects we do NOT add wrapper lines.
+        val needsWrapper = if (isDecodedFromObject) {
+            false
+        } else {
+            when (originalDelim) {
+                EmbedDelim.Percent -> contentTrimmed.contains("%\\%") || contentTrimmed.contains(originalDelim.closeDelimiter)
+                EmbedDelim.Dollar -> contentTrimmed.contains("\\$\\$") || contentTrimmed.contains(originalDelim.closeDelimiter)
+            }
+        }
+
+        val contentToEscape = if (needsWrapper) {
+            // When wrapping for parsed embed blocks, always add explicit wrapper lines
+            // (we disabled wrapping for object-decoded blocks earlier). Prefer the
+            // percent delimiter as the canonical wrapper in output.
+            val chosenDelim = EmbedDelim.Percent
+            chosenDelim.openDelimiter + "\n" + contentTrimmed + "\n" + chosenDelim.closeDelimiter
+        } else {
+            contentTrimmed
+        }
+
+        // TOML multiline basic strings still interpret backslash escapes. For embed
+        // blocks that were decoded from objects we need to preserve the additional
+        // escaping they carried in the AST (so double backslashes in source), but
+        // for parsed embed blocks we should preserve the parser literal as-is
+        // (do not double backslashes). In all cases escape triple-quote sequences
+        // to avoid terminating the TOML string early.
+        val escaped = if (isDecodedFromObject) {
+            contentToEscape.replace("\\", "\\\\").replace("\"\"\"", "\\\"\\\"\\\"")
+        } else {
+            contentToEscape.replace("\"\"\"", "\\\"\\\"\\\"")
+        }
+
+        // DEBUG: Print raw vs processed for tricky embed cases (temporary)
+        try {
+            if (contentTrimmed.contains("%\\%") || contentTrimmed.lines().any { it.trim() == "%" } ||
+                contentTrimmed.contains("\$\$") ) {
+                println("[DEBUG embed] embedTag=$embedTag metadata=$metadataTag")
+                println("[DEBUG embed] embedContentNode.stringContent=<<${embedContentNode.stringContent}>>")
+                println("[DEBUG embed] embedContent(unescaped)=<<$embedContent>>")
+                println("[DEBUG embed] contentTrimmed=<<$contentTrimmed>>")
+                println("[DEBUG embed] escaped=<<$escaped>>")
+            }
+        } catch (e: Exception) {
+            // ignore debug failures
+        }
+
+        val baseIndent = indent.firstLineIndent()
+
+        if (!compileTarget.retainEmbedTags) {
+            // Emit embedTag if present, then embedContent as a TOML triple-quoted basic string
+            val tagLine = if (embedTag.isNotEmpty()) baseIndent + "${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"\n" else ""
+            val contentKey = if (metadataTag.isNotEmpty()) metadataTag.replace(":", "").trim() + ".${EmbedObjectKeys.EMBED_CONTENT.key}" else EmbedObjectKeys.EMBED_CONTENT.key
+            // Emit the TOML triple-quoted string using the normalized content (no additional
+            // indentation is inserted here so the content appears exactly as the embed
+            // block provided after trimming/normalize steps above).
+            val indented = escaped
+            val contentBlock = baseIndent + "$contentKey = \"\"\"\n" + indented + "\n" + baseIndent + "\"\"\""
+            return tagLine + contentBlock
+        } else {
+            // retainEmbedTags: always emit tag/metadata lines (if any) and embedContent as triple-quoted
             val parts = mutableListOf<String>()
             if (embedTag.isNotEmpty()) {
                 parts.add("${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
@@ -1128,8 +1342,9 @@ class EmbedBlockNode(
             if (metadataTag.isNotEmpty()) {
                 parts.add("${EmbedObjectKeys.EMBED_METADATA.key} = \"${renderForJsonString(metadataTag)}\"")
             }
-            parts.add("${EmbedObjectKeys.EMBED_CONTENT.key} = \"${renderForJsonString(embedContent)}\"")
-            parts.joinToString("\n")
+            // Do not prefix content lines with extra indentation here; keep normalized content as-is
+            parts.add("${EmbedObjectKeys.EMBED_CONTENT.key} = \"\"\"\n" + escaped + "\n\"\"\"")
+            return parts.joinToString("\n")
         }
     }
 

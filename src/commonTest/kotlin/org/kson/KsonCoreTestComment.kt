@@ -58,8 +58,9 @@ class KsonCoreTestComment : KsonCoreTest {
             }
         """.trimIndent(),
             """
-            key.value = 42
-        """.trimIndent(),
+            [key]
+            value = 42
+            """.trimIndent(),
 
             compileSettings = CompileSettings(
                 ksonSettings = Kson(preserveComments = false),
@@ -600,7 +601,9 @@ class KsonCoreTestComment : KsonCoreTest {
             """.trimIndent(),
             """
                 # a comment on an embed block
-                value = "embedded stuff\n"
+                embedContent = \"\"\"
+                embedded stuff
+                \"\"\"
             """.trimIndent()
         )
     }
