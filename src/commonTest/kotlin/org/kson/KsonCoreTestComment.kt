@@ -601,9 +601,9 @@ class KsonCoreTestComment : KsonCoreTest {
             """.trimIndent(),
             """
                 # a comment on an embed block
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 embedded stuff
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
     }

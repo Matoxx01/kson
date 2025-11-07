@@ -25,9 +25,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    this is a raw embed\n"
             """.trimIndent(),
             """
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 this is a raw embed
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
 
@@ -51,10 +51,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    select * from something\n"
             """.trimIndent(),
             """
+                [embedBlock]
                 embedTag = "sql"
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 select * from something
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
 
@@ -79,10 +80,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    select * from something\n"
             """.trimIndent(),
             """
+                [embedBlock]
                 embedTag = "sql"
-                database.embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 select * from something
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
 
@@ -106,10 +108,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    select * from something\n"
             """.trimIndent(),
             """
+                [embedBlock]
                 embedTag = "sql"
-                database.embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 select * from something
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
     }
@@ -137,9 +140,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    this is a raw embed with alternative delimiter\n"
             """.trimIndent(),
             """
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 this is a raw embed with alternative delimiter
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
 
@@ -163,10 +166,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "    select * from something\n"
             """.trimIndent(),
             """
+                [embedBlock]
                 embedTag = "sql"
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 select * from something
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
     }
@@ -196,12 +200,12 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             "this is an escaped delim %%\nwhereas in this case, this is not $\\$\n"
             """.trimIndent(),
             """
-            embedContent = \"\"\"
+            embedContent = ${"\"\"\""}
             %
             this is an escaped delim %\%
             whereas in this case, this is not $\$
             %%
-            \"\"\"
+            ${"\"\"\""}
             """.trimIndent()
         )
 
@@ -225,11 +229,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             "more %% %% %% than $$ should yield a $$-delimited block\n"
             """.trimIndent(),
             """
-            embedContent = \"\"\"
+            embedContent = ${"\"\"\""}
             %
             more %\% %\% %\% than $$ should yield a $$-delimited block
             %%
-            \"\"\"
+            ${"\"\"\""}
             """.trimIndent()
         )
     }
@@ -256,9 +260,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             "these double $$ dollars are %%%% embedded but escaped\n"
             """.trimIndent(),
             """
-            embedContent = \"\"\"
+            embedContent = ${"\"\"\""}
             these double $\$ dollars are %%%% embedded but escaped
-            \"\"\"
+            ${"\"\"\""}
             """.trimIndent()
         )
     }
@@ -282,9 +286,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 "%\\"
             """.trimIndent(),
             """
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 %\
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent()
         )
     }
@@ -314,9 +318,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -342,10 +346,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
+                [embedBlock]
                 embedTag = "sql"
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -371,10 +376,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
                 }
             """.trimIndent(),
             """
-                embedMetadata = "meta"
-                embedContent = \"\"\"
+                [embedBlock]
+                embedTag = "meta"
+                embedContent = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -412,9 +418,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -445,9 +451,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
                 unrelatedKey = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
@@ -492,9 +498,9 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent.not = \"\"\"
+                embedContent.not = ${"\"\"\""}
                 content
-                \"\"\"
+                ${"\"\"\""}
                 unrelatedKey = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
@@ -537,11 +543,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 embeddedEmbed: %
                 EMBED CONTENT
                 %%
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -575,11 +581,11 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent = \"\"\"
+                embedContent = ${"\"\"\""}
                 embeddedEmbed: $
                 EMBED WITH %\\% CONTENT
                 $$
-                \"\"\"
+                ${"\"\"\""}
             """.trimIndent(),
             compileSettings = compileSettings
         )
