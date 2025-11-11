@@ -4,6 +4,7 @@ import org.kson.CompileTarget.*
 import org.kson.ast.KsonRoot
 import org.kson.parser.LoggedMessage
 import org.kson.testSupport.validateJson
+import org.kson.testSupport.validateToml
 import org.kson.testSupport.validateYaml
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,10 +22,10 @@ interface KsonCoreTest {
      * and custom [CompileSettings] may be constructed as needed
      */
     data class CompileSettings(
-        val ksonSettings: CompileTarget.Kson = CompileTarget.Kson(),
-        val yamlSettings: CompileTarget.Yaml = CompileTarget.Yaml(),
-        val jsonSettings: CompileTarget.Json = CompileTarget.Json(),
-        val tomlSettings: CompileTarget.Toml = CompileTarget.Toml(),
+        val ksonSettings: Kson = Kson(),
+        val yamlSettings: Yaml = Yaml(),
+        val jsonSettings: Json = Json(),
+        val tomlSettings: Toml = Toml(),
     )
 
     /**
@@ -71,8 +72,7 @@ interface KsonCoreTest {
             )
         }
         try {
-            // lightweight validation only; full TOML parsing is not in scope for these tests
-            KsonCore.parseToToml(source, compileSettings.tomlSettings)
+            validateToml(expectedToml)
         } catch (e: Exception) {
             throw IllegalArgumentException(
                 "ERROR: The expected TOML in this test is invalid. Please fix the test's expectations.\n" +
@@ -122,6 +122,5 @@ interface KsonCoreTest {
             tomlResult.toml,
             message
         )
-
     }
 }

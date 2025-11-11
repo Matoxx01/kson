@@ -405,13 +405,13 @@ class KsonBuilder(private val tokens: List<Token>, private val ignoreErrors: Boo
             embedContentProperty.location
         )
 
-    return EmbedBlockNode(
-        embedTagValue,
-        embedMetadataValue,
-        embedContentValue,
-        EmbedDelim.Percent,
-        location,
-        true
+        return EmbedBlockNode(
+            embedTagValue,
+            embedMetadataValue,
+            embedContentValue,
+            EmbedDelim.Percent,
+            location,
+            true
         )
     }
 

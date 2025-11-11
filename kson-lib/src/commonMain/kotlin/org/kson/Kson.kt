@@ -79,7 +79,7 @@ object Kson {
     }
 
     /**
-     * Converts Kson to Toml
+     * Converts Kson to Toml, preserving comments
      *
      * @param kson The Kson source to convert
      * @param retainEmbedTags Whether to retain the embed tags in the result
