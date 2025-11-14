@@ -98,12 +98,7 @@ sealed class AstNodeImpl(override val location: Location) : AstNode {
     override fun toSourceWithNext(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
         return if (compileTarget.preserveComments && this is Documented && comments.isNotEmpty()) {
             // if we have comments, write them followed by the node content on the next line with an appropriate indent
-            val processedComments = if (compileTarget is Toml) {
-                comments.map { it.trimEnd() }
-            } else {
-                comments
-            }
-            indent.firstLineIndent() + processedComments.joinToString("\n${indent.bodyLinesIndent()}") +
+            indent.firstLineIndent() + comments.joinToString("\n${indent.bodyLinesIndent()}") +
                     "\n" + toSourceInternal(indent.clone(false), nextNode, compileTarget)
         } else {
             // otherwise, just pass through to the node content
