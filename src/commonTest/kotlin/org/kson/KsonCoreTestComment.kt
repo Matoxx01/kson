@@ -108,13 +108,15 @@ class KsonCoreTestComment : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-                # comment one
-                value = "one"
-                # comment two
-                value = "two"
-                # comment three.1
-                # comment three.2
-                value = "three"
+                value = [
+                  # comment one
+                  "one",
+                  # comment two
+                  "two",
+                  # comment three.1
+                  # comment three.2
+                  "three"
+                ]
             """.trimIndent()
         )
     }
@@ -152,10 +154,13 @@ class KsonCoreTestComment : KsonCoreTest {
               ]
             """.trimIndent(),
             """
-                    # first comment
-                    # second comment
-                    # third comment
-                    value = ["one", "two"]
+              value = [
+                # first comment
+                # second comment
+                # third comment
+                "one",
+                "two"
+              ]
             """.trimIndent()
         )
     }
@@ -439,11 +444,13 @@ class KsonCoreTestComment : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-                    # comment on list
-                    # comment on first_element
-                    value = "first_element"
-                    # comment on second_element
-                    value = "second_element"
+                # comment on list
+                value = [
+                  # comment on first_element
+                  "first_element",
+                  # comment on second_element
+                  "second_element"
+                ]
             """.trimIndent()
         )
 
@@ -473,10 +480,12 @@ class KsonCoreTestComment : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-                # comment on first_element
-                value = "first_element"
-                # comment on second_element
-                value = "second_element"
+                value = [
+                  # comment on first_element
+                  "first_element",
+                  # comment on second_element
+                  "second_element"
+                ]
             """.trimIndent(),
             "should always anchor dash-delimited list comments to the elements " +
                     "since there's no syntactic way to identify a comment on the whole list"
@@ -568,8 +577,33 @@ class KsonCoreTestComment : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-                    # a list of lists
-                    value = [[1.2, 2.2, 3.2], [[10.2], [4.2, 5.2], [9.2, 8.2]]]
+            # a list of lists
+            value = [
+              [
+                # trailing comment on constant element
+                1.2,
+                # a nested list element
+                2.2,
+                3.2
+              ],
+              [
+                # a nested dash-delimited list
+                [
+                  10.2
+                ],
+                # a further nested braced list
+                # trailing comment on nested list
+                [
+                  4.2,
+                  # a further nested braced list element
+                  5.2
+                ],
+                [
+                  9.2,
+                  8.2
+                ]
+              ]
+            ]
             """.trimIndent(),
             "should preserve comments in nested lists"
         )
@@ -640,12 +674,14 @@ class KsonCoreTestComment : KsonCoreTest {
                 ]
             """.trimIndent(),
             """
-                    # leading
-                    # trailing list brace
-                    # trailing "one"
-                    value = "one"
-                    # trailing "two"
-                    value = "two"
+                # leading
+                # trailing list brace
+                value = [
+                  # trailing "one"
+                  "one",
+                  # trailing "two"
+                  "two"
+                ]
             """.trimIndent()
         )
     }
@@ -742,11 +778,12 @@ class KsonCoreTestComment : KsonCoreTest {
             """.trimIndent(),
             "null",
             """
+                value = "null"
+                
                 # these are some trailing
-                # comments that would like
+                # comments that would like 
                 # to be preserved at the end
                 # of the file
-                value = "null"
             """.trimIndent()
         )
     }

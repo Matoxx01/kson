@@ -145,7 +145,11 @@ class KsonCoreTestObject : KsonCoreTest {
             """
             value = [
               {ObjA1 = 1},
-              {ObjA2 = [{nested1 = "v"}, {nested2 = "v"}, {nested3 = "v"}]},
+              {ObjA2 = [
+                {nested1 = "v"},
+                {nested2 = "v"},
+                {nested3 = "v"}
+              ]},
               {ObjA3 = 3},
               "A string",
               {ObjB4 = 4}
