@@ -194,19 +194,20 @@ class KsonRootImpl(
                         is ObjectNode -> {
                             // Objects don't need wrapping, just add end comments
                             if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                                val endComments = documentEndComments.map { it.trimEnd() }.joinToString("\n")
+                                val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
                                 ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
                             }
                         }
                         is ListNode -> {
                             // Lists always need value = wrapping in TOML
-                            val listNode = rootNode as ListNode
+                            val listNode = rootNode
                             val elementsWithComments = listNode.elements.filterIsInstance<ListElementNodeImpl>()
                                 .filter { it.comments.isNotEmpty() }
                             
                             if (elementsWithComments.size == 1 && compileTarget.preserveComments) {
                                 // Single element with comments - put comments before value =
-                                val elementComments = elementsWithComments.first().comments.map { it.trimEnd() }.joinToString("\n")
+                                val elementComments =
+                                    elementsWithComments.first().comments.joinToString("\n") { it.trimEnd() }
                                 ksonDocument = elementComments + "\n" + "value = " + ksonDocument.trim()
                             } else if (elementsWithComments.size > 1 && compileTarget.preserveComments) {
                                 // Multiple elements with comments - already formatted as separate value = lines
@@ -218,7 +219,7 @@ class KsonRootImpl(
                             
                             // Add end comments if any
                             if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                                val endComments = documentEndComments.map { it.trimEnd() }.joinToString("\n")
+                                val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
                                 ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
                             }
                         }
@@ -229,8 +230,6 @@ class KsonRootImpl(
                             // - Without retainEmbedTags AND with comments: wrap with value = (like scalars)
                             // - Without retainEmbedTags AND without comments: don't wrap (already properly formatted)
                             val isEmbedBlock = rootNode is EmbedBlockNode
-                            val hasRootComments = comments.isNotEmpty()
-                            val tomlTarget = compileTarget as Toml
                             
                             if (!isEmbedBlock) {
                                 // For TOML, regular scalars get wrapped with value =
@@ -238,13 +237,13 @@ class KsonRootImpl(
 
                                 if (hasDocEndComments) {
                                     // Put document end comments BEFORE value =
-                                    val endComments = documentEndComments.map { it.trimEnd() }.joinToString("\n")
+                                    val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
                                     val scalarValue = ksonDocument.trimStart()
-                                    ksonDocument = endComments + "\n" + "value = " + scalarValue
+                                    ksonDocument = "$endComments\nvalue = $scalarValue"
                                 } else {
                                     // Regular scalar - wrap with value =
                                     val scalarValue = ksonDocument.trimStart()
-                                    ksonDocument = "value = " + scalarValue
+                                    ksonDocument = "value = $scalarValue"
                                 }
                             } else {
                                 // Embed blocks should emit their own properties (embedContent/embedTag/etc.)
