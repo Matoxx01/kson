@@ -33,7 +33,11 @@ class KsonCoreTestList : KsonCoreTest {
                   "a string"
                 ]
             """.trimIndent(),
-      expectedToml = "value = [\"a string\"]"
+            """
+                value = [
+                  "a string"
+                ]
+            """.trimIndent()
         )
 
         assertParsesTo(
@@ -57,7 +61,13 @@ class KsonCoreTestList : KsonCoreTest {
                   44.7
                 ]
             """.trimIndent(),
-      expectedToml = "value = [42.4, 43.1, 44.7]"
+            """
+                value = [
+                  42.4,
+                  43.1,
+                  44.7
+                ]
+            """.trimIndent(),
         )
 
         assertParsesTo(
@@ -81,7 +91,13 @@ class KsonCoreTestList : KsonCoreTest {
                   null
                 ]
             """.trimIndent(),
-            expectedToml = "value = [true, false, \"null\"]",
+            """
+                value = [
+                  true,
+                  false,
+                  "null"
+                ]
+            """.trimIndent(),
             message = "should support an optional trailing comma in lists"
         )
 
@@ -116,7 +132,17 @@ class KsonCoreTestList : KsonCoreTest {
                   ]
                 ]
             """.trimIndent(),
-      "value = [true, false, [1.2, 3.4, 5.6]]"
+            """
+                value = [
+                  true,
+                  false,
+                  [
+                    1.2,
+                    3.4,
+                    5.6
+                  ]
+                ]
+            """.trimIndent(),
         )
     }
 
@@ -137,7 +163,11 @@ class KsonCoreTestList : KsonCoreTest {
                   "a string"
                 ]
             """.trimIndent(),
-      "value = [\"a string\"]"
+            """
+                value = [
+                  "a string"
+                ]
+            """.trimIndent(),
         )
 
         assertParsesTo(
@@ -163,7 +193,13 @@ class KsonCoreTestList : KsonCoreTest {
                   44.7
                 ]
             """.trimIndent(),
-      "value = [42.4, 43.1, 44.7]"
+            """
+                value = [
+                  42.4,
+                  43.1,
+                  44.7
+                ]
+            """.trimIndent(),
         )
     }
 
@@ -198,7 +234,14 @@ class KsonCoreTestList : KsonCoreTest {
                   "c"
                 ]
             """.trimIndent(),
-      "value = [\"a\", \"b\", \"c\"]"
+
+            """
+                value = [
+                  "a",
+                  "b",
+                  "c"
+                ]
+            """.trimIndent(),
         )
 
         assertParsesTo("""
@@ -225,7 +268,13 @@ class KsonCoreTestList : KsonCoreTest {
                   "c"
                 ]
             """.trimIndent(),
-      "value = [\"a\", \"b\", \"c\"]"
+            """
+                value = [
+                  "a",
+                  "b",
+                  "c"
+                ]
+            """.trimIndent(),
         )
     }
 
@@ -249,7 +298,13 @@ class KsonCoreTestList : KsonCoreTest {
                  ]
                ]
             """.trimIndent(),
-      "value = [[[]]]"
+            """
+               value = [
+                 [
+                   []
+                 ]
+               ]
+            """.trimIndent(),
         )
     }
 
@@ -285,7 +340,15 @@ class KsonCoreTestList : KsonCoreTest {
                   }
                 ]
             """.trimIndent(),
-      "value = [{nestedDashList = [\"a\", \"b\", \"c\"]}]"
+            """
+                value = [
+                  {nestedDashList = [
+                    "a",
+                    "b",
+                    "c"
+                  ]}
+                ]
+            """.trimIndent(),
         )
     }
 
@@ -338,7 +401,21 @@ class KsonCoreTestList : KsonCoreTest {
                   ]
                 ]
             """.trimIndent(),
-      "value = [[\"a\", \"b\", [\"a1\", \"b1\", \"c1\"], \"c\"]]"
+
+            """
+                value = [
+                  [
+                    "a",
+                    "b",
+                    [
+                      "a1",
+                      "b1",
+                      "c1"
+                    ],
+                    "c"
+                  ]
+                ]
+            """.trimIndent(),
         )
     }
 
@@ -431,7 +508,15 @@ class KsonCoreTestList : KsonCoreTest {
                   "outer list elem 1"
                 ]
             """.trimIndent(),
-      "value = [[\"sub-list elem 1\", \"sub-list elem 2\"], \"outer list elem 1\"]"
+      """
+              value = [
+                [
+                  "sub-list elem 1",
+                  "sub-list elem 2"
+                ],
+                "outer list elem 1"
+              ]
+            """.trimIndent()
         )
     }
 } 
