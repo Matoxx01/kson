@@ -4,9 +4,11 @@ package org.kson.testSupport
  * Validate whether the given [tomlString] parses as legal TOML.
  */
 fun validateToml(tomlString: String) {
+    // TODO: use a real toml library...
+
     // Perform basic syntax validation
     val trimmed = tomlString.trim()
-    
+
     if (trimmed.isEmpty()) {
         // Empty TOML is valid
         return
