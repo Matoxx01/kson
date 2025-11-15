@@ -297,7 +297,8 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
     fun testEmbedBlockTagsRetainment() {
         val compileSettings = KsonCoreTest.CompileSettings(
             yamlSettings = CompileTarget.Yaml(retainEmbedTags = true),
-            jsonSettings = CompileTarget.Json(retainEmbedTags = true)
+            jsonSettings = CompileTarget.Json(retainEmbedTags = true),
+            tomlSettings = CompileTarget.Toml(retainEmbedTags = true)
         )
         assertParsesTo(
             """

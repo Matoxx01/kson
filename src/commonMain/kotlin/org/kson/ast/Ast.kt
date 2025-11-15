@@ -173,84 +173,121 @@ class KsonRootImpl(
      * Produces valid [compileTarget] source code for the AST rooted at this [KsonRoot]
      */
     override fun toSourceInternal(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
-        return when (compileTarget) {
-            is Kson, is Yaml, is Json, is Toml -> {
-                var ksonDocument = if (compileTarget is Toml && rootNode !is ObjectNode && rootNode !is EmbedBlockNode) {
-                    // A TOML document always represents an object, but KSON allows lists and scalars as well. To work
-                    // around this mismatch, we serialize non-object KSON documents to TOML as an object with a single
-                    // `value` field that contains the actual value.
-                    val formatted = rootNode.toSourceWithNext(indent, null, compileTarget)
-                    "value = $formatted"
-                } else if (compileTarget is Toml && rootNode is ObjectNode) {
-                    // TODO: explain why this is here
-                    TomlHelper.formatTable("", rootNode, indent, nextNode, compileTarget, true)
-                } else {
-                    rootNode.toSourceWithNext(indent, null, compileTarget)
-                }
-
-                trailingContent.forEach {
-                    if (ksonDocument.takeLast(2) != "\n\n") {
-                        ksonDocument += "\n\n"
+        var ksonDocument = when (compileTarget) {
+            is Kson, is Yaml, is Json -> {
+                rootNode.toSourceWithNext(indent, null, compileTarget)
+            }
+            is Toml -> {
+                when (rootNode) {
+                    is ObjectNode -> {
+                        // TODO (ao): explain why this is here
+                        val properties = TomlHelper.objectProperties(rootNode)
+                        TomlHelper.formatTable("", properties, indent, null, compileTarget, true)
                     }
 
-                    ksonDocument += it.toSourceWithNext(indent, null, compileTarget)
-                }
+                    is EmbedBlockNode if compileTarget.retainEmbedTags -> {
+                        // TODO (ao): explain why this is here
+                        val properties = rootNode.objectProperties()
+                        TomlHelper.formatEmbedBlockAsTable(null, properties)
+                    }
 
-                // remove any trailing newlines
-                while (ksonDocument.endsWith("\n")) {
-                    ksonDocument = ksonDocument.removeSuffix("\n")
-                }
-
-                if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                    val endComments = documentEndComments.joinToString("\n")
-                    ksonDocument += if (ksonDocument.endsWith(endComments)) {
-                        // endComments are already embedded in the document, likely as part of a trailing error
-                        ""
-                    } else {
-                        if (compileTarget is Kson && compileTarget.formatConfig.formattingStyle == FormattingStyle.COMPACT) {
-                            "\n" + endComments
-                        } else {
-                            "\n\n" + endComments
-                        }
+                    else -> {
+                        // A TOML document always represents an object, but KSON allows lists and scalars as well. To work
+                        // around this mismatch, we serialize non-object KSON documents to TOML as an object with a single
+                        // `value` field that contains the actual value.
+                        val formatted = rootNode.toSourceWithNext(indent, null, compileTarget)
+                        "value = $formatted"
                     }
                 }
-
-                ksonDocument
             }
         }
+
+        trailingContent.forEach {
+            if (ksonDocument.takeLast(2) != "\n\n") {
+                ksonDocument += "\n\n"
+            }
+
+            ksonDocument += it.toSourceWithNext(indent, null, compileTarget)
+        }
+
+        // remove any trailing newlines
+        while (ksonDocument.endsWith("\n")) {
+            ksonDocument = ksonDocument.removeSuffix("\n")
+        }
+
+        if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
+            val endComments = documentEndComments.joinToString("\n")
+            ksonDocument += if (ksonDocument.endsWith(endComments)) {
+                // endComments are already embedded in the document, likely as part of a trailing error
+                ""
+            } else {
+                if (compileTarget is Kson && compileTarget.formatConfig.formattingStyle == FormattingStyle.COMPACT) {
+                    "\n" + endComments
+                } else {
+                    "\n\n" + endComments
+                }
+            }
+        }
+
+        return ksonDocument
     }
 
     object TomlHelper {
+        fun objectProperties(objectNode: ObjectNode): List<Triple<ObjectPropertyNodeImpl, StringNodeImpl, KsonValueNodeImpl>> {
+            return objectNode.properties.map {
+                val property = it as? ObjectPropertyNodeImpl
+                    ?: return emptyList()
+                val key = (property.key as? ObjectKeyNodeImpl)?.key as? StringNodeImpl
+                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+                val value = property.value as? KsonValueNodeImpl
+                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+
+                Triple(property, key, value)
+            }
+        }
+
+        fun formatEmbedBlockAsTable(
+            tablePath: String?,
+            properties: List<Pair<String, String>>
+        ): String {
+            val builder = StringBuilder()
+
+            // TODO(ao): comments to the embed block go here
+
+            if (tablePath != null) {
+                builder.append("[$tablePath]\n")
+            }
+
+            properties.forEach { property ->
+                builder.append(property.first)
+                builder.append(" = \"")
+                builder.append(renderForJsonString(property.second))
+                builder.append("\"\n")
+            }
+
+            return builder.toString()
+        }
+
         fun formatTable(
             tablePath: String,
-            objectNode: ObjectNode,
+            objectProperties: List<Triple<ObjectPropertyNodeImpl, StringNodeImpl, KsonValueNodeImpl>>,
             indent: Indent,
             nextNode: AstNode?,
-            compileTarget: CompileTarget,
+            compileTarget: Toml,
             isDocumentFirst: Boolean = false, // TODO(ao): document
         ): String {
-            // In TOML, nested objects are formatted by either scoping their properties (e.g.,
-            // `my.nested.property = value`) or using table headers (e.g., `[my.nested]\nproperty = value`). We use the
-            // latter. In KSON terms, this means that object properties are formatted differently when the property contains
-            // an object, provided the...
-            //
-            // Luckily for us, this kind of table formatting only applies to objects that descend from other objects, up to
-            // the root node. Objects that descend from lists are formatted differently. This means that we write custom
-            // traversal code that delegates formatting,
-            // The table header is composed of all object keys in the path to the nested object.
+            // TODO(ao): next node handling (I think it's unnecessary for TOML)
 
             val builder = StringBuilder()
 
-            // TODO: next node handling
-
-            val objects = mutableListOf<Pair<ObjectPropertyNodeImpl, ObjectNode>>()
-            val embedBlocks = mutableListOf<ObjectPropertyNodeImpl>()
+            val objects = mutableListOf<Pair<StringNodeImpl, ObjectNode>>()
+            val embedBlocks = mutableListOf<Pair<StringNodeImpl, EmbedBlockNode>>()
             val otherNodes = mutableListOf<AstNode>()
-            objectNode.properties.forEach { property ->
-                when (val value = (property as? ObjectPropertyNodeImpl)?.value) {
-                    is ObjectNode -> objects.add(Pair(property, value))
-                    is EmbedBlockNode -> embedBlocks.add(property)
-                    else -> otherNodes.add(property)
+            objectProperties.forEach { property ->
+                when (val value = property.third) {
+                    is ObjectNode -> objects.add(Pair(property.second, value))
+                    is EmbedBlockNode if compileTarget.retainEmbedTags -> embedBlocks.add(Pair(property.second, value))
+                    else -> otherNodes.add(property.first)
                 }
             }
 
@@ -260,8 +297,7 @@ class KsonRootImpl(
             }
 
             embedBlocks.forEach { property ->
-                val key = ((property.key as? ObjectKeyNodeImpl)?.key as? StringNodeImpl)?.stringContent
-                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+                val key = property.first.stringContent
                 val subPath = if (tablePath.isEmpty()) {
                     key
                 } else {
@@ -273,15 +309,13 @@ class KsonRootImpl(
                     builder.append("\n")
                 }
 
-                // TODO(ao): comments to the property go here
-                builder.append("[$subPath]\n")
-                builder.append(property.value.toSourceWithNext(indent, nextNode, compileTarget))
+                builder.append(formatEmbedBlockAsTable(subPath, property.second.objectProperties()))
                 builder.append("\n")
             }
 
             objects.forEach { property ->
-                val key = ((property.first.key as? ObjectKeyNodeImpl)?.key as? StringNodeImpl)?.stringContent
-                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+                // TODO(ao): what about quoted strings?
+                val key = property.first.stringContent
                 val subPath = if (tablePath.isEmpty()) {
                     key
                 } else {
@@ -295,7 +329,8 @@ class KsonRootImpl(
 
                 // TODO(ao): comments to the property go here
                 builder.append("[$subPath]\n")
-                builder.append(formatTable(subPath, property.second, indent, nextNode, compileTarget))
+                val properties = objectProperties(property.second)
+                builder.append(formatTable(subPath, properties, indent, nextNode, compileTarget))
                 builder.append("\n")
             }
 
@@ -752,32 +787,8 @@ open class QuotedStringNode(
                 indent.firstLineIndent() + "\"" + DoubleQuote.escapeQuotes(unquotedString) + "\""
             }
 
-            is Json -> {
+            is Json, is Toml -> {
                 indent.firstLineIndent() + "\"${escapeRawWhitespace(DoubleQuote.escapeQuotes(unquotedString))}\""
-            }
-            
-            is Toml -> {
-                // TODO: why is this so complicated, compared to YAML? We should probably be able to simplify it
-
-                // For TOML, escape raw whitespace, then normalize
-                val escaped = escapeRawWhitespace(unquotedString)
-                
-                // Heuristic to distinguish embedContent from regular strings:
-                // - embedContent typically has \n only at the very end
-                // - regular strings with mixed whitespace have \n in the middle, or have \t
-                // So: convert newlines to spaces UNLESS the string has \n only at the end (no \n before)
-                val hasInternalNewlines = escaped.contains("\\n") && !escaped.matches(Regex("""^[^\\]*(?:\\[^n\\][^\\]*)*(?:\\n)?$"""))
-                val hasTabs = escaped.contains("\\t")
-                
-                val normalized = if (hasInternalNewlines || hasTabs) {
-                    // String has tabs or internal newlines - convert all newlines to spaces
-                    normalizeWhitespaceForToml(convertNewlineEscapesToSpaces(escaped))
-                } else {
-                    // String has at most one \n at the end (likely embedContent) - preserve \n
-                    normalizeWhitespaceForToml(escaped)
-                }
-                
-                indent.firstLineIndent() + "\"$normalized\""
             }
         }
     }
@@ -816,7 +827,7 @@ class UnquotedStringNode(override val stringContent: String, location: Location)
             }
             
             is Toml -> {
-                indent.firstLineIndent() + "\"${normalizeWhitespaceForToml(renderForJsonString(stringContent))}\""
+                indent.firstLineIndent() + "\"${renderForJsonString(stringContent)}\""
             }
         }
     }
@@ -884,7 +895,6 @@ class EmbedBlockNode(
     val embedContentNode: StringNodeImpl,
     embedDelim: EmbedDelim,
     location: Location,
-    private val isDecodedFromObject: Boolean = false
 ) :
     KsonValueNodeImpl(location) {
 
@@ -980,156 +990,27 @@ class EmbedBlockNode(
         }
     }
 
+    fun objectProperties(): List<Pair<String, String>> {
+        val properties = mutableListOf<Pair<String, String>>()
+        if (embedTag.isNotEmpty()) {
+            properties.add(Pair(EmbedObjectKeys.EMBED_TAG.key, embedTag))
+        }
+
+        if (metadataTag.isNotEmpty()) {
+            properties.add(Pair(EmbedObjectKeys.EMBED_METADATA.key, metadataTag))
+        }
+
+        properties.add(Pair(EmbedObjectKeys.EMBED_CONTENT.key, embedContent))
+        return properties
+    }
+
     private fun renderTomlFormat(indent: Indent, compileTarget: Toml): String {
-        // For TOML embed content we emit a TOML multiline basic string for embedContent
-        // (triple-quoted) so that original embed formatting and delimiter-escaping is preserved.
-        // When retainEmbedTags is true we emit tag/metadata properties followed by embedContent;
-        // when false we emit embedTag (if present) and embedContent as top-level properties.
-
-        // Choose the content literal depending on whether this node was decoded from an
-        // object or parsed as an embed block. For object-decoded embed blocks we prefer
-        // the unescaped content (so we don't emit wrapper delimiter lines). For parsed
-        // embed blocks we prefer the raw parser literal so single-backslash escapes are
-        // preserved.
-        val rawLiteral = if (isDecodedFromObject) {
-            embedContent
+        return if (!compileTarget.retainEmbedTags) {
+            // TODO(ao): render as multiline string
+            indent.firstLineIndent() + "\"${renderForJsonString(embedContent)}\""
         } else {
-            embedContentNode.stringContent
+            renderTomlInlineTable(indent, objectProperties())
         }
-
-        // Trim a single trailing newline for consistent emission; we'll add a newline when building the block
-        var contentTrimmed = if (rawLiteral.endsWith('\n')) rawLiteral.removeSuffix("\n") else rawLiteral
-
-        // Remove common leading indentation from non-empty lines so embedded blocks that were
-        // indented in source appear normalized in TOML triple-quoted output
-        val lines = contentTrimmed.split("\n")
-        val minIndent =
-            lines.filter { it.isNotEmpty() }.minOfOrNull { it.takeWhile { c -> c == ' ' || c == '\t' }.length } ?: 0
-        if (minIndent > 0) {
-            contentTrimmed = lines.joinToString("\n") { line ->
-                if (line.length >= minIndent) line.substring(minIndent) else line
-            }
-        }
-
-        // Determine whether we need to wrap the content with explicit embed delimiters
-        // inside the TOML triple-quoted string. Historically, tests expect the original
-        // delimiter marker lines to be preserved only when the original delimiter type
-        // required it. So we only consider escape patterns that match the original
-        // delimiter used when parsing this block.
-        // Add an explicit wrapper when necessary for parsed embed blocks. We need to
-        // preserve two separate cases:
-        //  - parsed embed blocks that contain escaped-close sequences (e.g. "%\%")
-        //    should have wrapper lines re-inserted so the original embed semantics
-        //    are preserved
-        //  - parsed embed blocks that somehow contain raw close delimiter substrings
-        //    (e.g. "%%" or "$$") should also cause wrapping
-        // For embed blocks decoded from objects we do NOT add wrapper lines.
-        val needsWrapper = if (isDecodedFromObject) {
-            false
-        } else {
-            when (originalDelim) {
-                EmbedDelim.Percent -> contentTrimmed.contains("%\\%") || contentTrimmed.contains(originalDelim.closeDelimiter)
-                EmbedDelim.Dollar -> contentTrimmed.contains("\\$\\$") || contentTrimmed.contains(originalDelim.closeDelimiter)
-            }
-        }
-
-        val contentToEscape = if (needsWrapper) {
-            // When wrapping for parsed embed blocks, always add explicit wrapper lines
-            // (we disabled wrapping for object-decoded blocks earlier). Prefer the
-            // percent delimiter as the canonical wrapper in output.
-            val chosenDelim = EmbedDelim.Percent
-            chosenDelim.openDelimiter + "\n" + contentTrimmed + "\n" + chosenDelim.closeDelimiter
-        } else {
-            contentTrimmed
-        }
-
-        // TOML multiline basic strings still interpret backslash escapes. For embed
-        // blocks that were decoded from objects we need to preserve the additional
-        // escaping they carried in the AST (so double backslashes in source), but
-        // for parsed embed blocks we should preserve the parser literal as-is
-        // (do not double backslashes). In all cases escape triple-quote sequences
-        // to avoid terminating the TOML string early.
-        val escaped = if (isDecodedFromObject) {
-            contentToEscape.replace("\\", "\\\\").replace("\"\"\"", "\\\"\\\"\\\"")
-        } else {
-            contentToEscape.replace("\"\"\"", "\\\"\\\"\\\"")
-        }
-
-        val baseIndent = indent.firstLineIndent()
-
-        if (!compileTarget.retainEmbedTags) {
-            // Emit embedTag if present, then embedContent as a TOML triple-quoted basic string
-            // When there's an embedTag, group fields under [embedBlock] table
-            if (embedTag.isNotEmpty()) {
-                val parts = mutableListOf<String>()
-                parts.add("[embedBlock]") // TODO: can we remove this?
-                parts.add("${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
-                parts.add("${EmbedObjectKeys.EMBED_CONTENT.key} = \"\"\"\n" + escaped + "\n\"\"\"")
-                return parts.joinToString("\n")
-            } else {
-                // Without embedTag, emit embedContent directly at root level
-                val contentKey = EmbedObjectKeys.EMBED_CONTENT.key
-                val contentBlock = baseIndent + "$contentKey = \"\"\"\n" + escaped + "\n" + baseIndent + "\"\"\""
-                return contentBlock
-            }
-        } else {
-            // retainEmbedTags: always emit tag/metadata lines (if any) and embedContent as triple-quoted
-            // When there's a tag or metadata, group fields under [embedBlock] table
-            val parts = mutableListOf<String>()
-            if (embedTag.isNotEmpty() || metadataTag.isNotEmpty()) {
-                parts.add("[embedBlock]") // TODO: can we remove this? It's wrong in some cases
-            }
-            // TOML convention: when only metadata exists (no embedTag), emit it as embedTag for simplicity
-            if (embedTag.isNotEmpty()) {
-                parts.add("${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
-                // Only emit embedMetadata if we also have an embedTag
-                if (metadataTag.isNotEmpty()) {
-                    parts.add("${EmbedObjectKeys.EMBED_METADATA.key} = \"${renderForJsonString(metadataTag)}\"")
-                }
-            } else if (metadataTag.isNotEmpty()) {
-                // No embedTag but has metadata: emit metadata as embedTag
-                parts.add("${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(metadataTag)}\"")
-            }
-            // Do not prefix content lines with extra indentation here; keep normalized content as-is
-            parts.add("${EmbedObjectKeys.EMBED_CONTENT.key} = \"\"\"\n" + escaped + "\n\"\"\"")
-            return parts.joinToString("\n")
-        }
-    }
-
-    /**
-     * Helper method to render this embed block as inline TOML properties for use in inline tables.
-     * Returns a list of "key = value" strings that can be joined with ", " in an inline table context.
-     *
-     * @param keyPrefix The dotted key prefix to use for the embed properties (e.g., "source")
-     * @param compileTarget The TOML compile target
-     * @return List of "key = value" strings for inline table
-     */
-    internal fun toTomlInlineProperties(keyPrefix: String, compileTarget: Toml): List<String> {
-        val parts = mutableListOf<String>()
-        
-        if (compileTarget.retainEmbedTags) {
-            if (embedTag.isNotEmpty()) {
-                parts.add("$keyPrefix.${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
-            }
-            if (metadataTag.isNotEmpty()) {
-                parts.add("$keyPrefix.${EmbedObjectKeys.EMBED_METADATA.key} = \"${renderForJsonString(metadataTag)}\"")
-            }
-        } else {
-            if (embedTag.isNotEmpty()) {
-                parts.add("$keyPrefix.${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
-            }
-        }
-        
-        // For embedContent, use triple-quoted string with escaped content
-        val content = embedContent.replace("\"\"\"", "\\\"\\\"\\\"")
-        parts.add("$keyPrefix.${EmbedObjectKeys.EMBED_CONTENT.key} = \"\"\"${content}\"\"\"")
-        
-        return parts
-    }
-
-    private fun escapeForToml(s: String): String {
-        // minimal escaping for double quotes and backslashes
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
     }
 
     /**
@@ -1153,6 +1034,18 @@ class EmbedBlockNode(
             |$embedTagLine$metadataTagLine${nextIndent.bodyLinesIndent()}"${EmbedObjectKeys.EMBED_CONTENT.key}": "${renderForJsonString(embedContent)}"
             |${indent.bodyLinesIndent()}}
         """.trimMargin()
+    }
+
+    /**
+     * Renders this embed block as a TOML inline table with separate fields for embed tag, metadata, and content
+     *
+     * @param indent The base indentation to apply to the object
+     * @param props The properties that the table should be built from
+     * @return The rendered JSON object string
+     */
+    private fun renderTomlInlineTable(indent: Indent, props: List<Pair<String, String>>): String {
+        val tableProperties = props.joinToString { "${it.first} = \"${it.second}\"" }
+        return "${indent.firstLineIndent()}{$tableProperties}"
     }
 
     /**

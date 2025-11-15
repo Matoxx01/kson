@@ -411,7 +411,6 @@ class KsonBuilder(private val tokens: List<Token>, private val ignoreErrors: Boo
             embedContentValue,
             EmbedDelim.Percent,
             location,
-            true
         )
     }
 
