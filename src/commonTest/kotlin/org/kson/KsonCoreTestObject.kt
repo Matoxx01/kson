@@ -10,7 +10,7 @@ class KsonCoreTestObject : KsonCoreTest {
             "{}",
             "{}",
             "{}",
-            "{}"
+            ""
         )
     }
 
@@ -324,11 +324,11 @@ class KsonCoreTestObject : KsonCoreTest {
                 }
             """.trimIndent(),
             """
+            unnested_key = 44
+            
             [key]
             nested_key = 10
             another_nest_key = 3
-
-            unnested_key = 44
             """.trimIndent()
         )
         

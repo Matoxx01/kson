@@ -90,14 +90,14 @@ class KsonCoreTestGeneralValue : KsonCoreTest {
               ]
             }
         """.trimIndent(),
-        expectedToml = """
-        [nested_obj]
-        key = "value"
-
-        nested_list = [
-          1.1,
-          2.1
-        ]
+            """
+            nested_list = [
+              1.1,
+              2.1
+            ]
+            
+            [nested_obj]
+            key = "value"
         """.trimIndent()
         )
     }
@@ -149,14 +149,14 @@ class KsonCoreTestGeneralValue : KsonCoreTest {
             }
             """.trimIndent(),
             expectedToml = """
+            outer_key2 = "value"
+            
             [outer_key1]
             inner_key = [
               1,
               2,
               3
             ]
-
-            outer_key2 = "value"
             """.trimIndent(),
           )
 
