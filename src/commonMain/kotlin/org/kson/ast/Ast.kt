@@ -14,6 +14,7 @@ import org.kson.parser.behavior.StringQuote
 import org.kson.parser.behavior.StringQuote.*
 import org.kson.parser.behavior.StringUnquoted
 import org.kson.parser.behavior.embedblock.EmbedObjectKeys
+import org.kson.stdlibx.exceptions.ShouldNotHappenException
 
 interface AstNode {
     /**
@@ -174,12 +175,24 @@ class KsonRootImpl(
     override fun toSourceInternal(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
         return when (compileTarget) {
             is Kson, is Yaml, is Json, is Toml -> {
-                var ksonDocument = rootNode.toSourceWithNext(indent, null, compileTarget)
+                var ksonDocument = if (compileTarget is Toml && rootNode !is ObjectNode && rootNode !is EmbedBlockNode) {
+                    // A TOML document always represents an object, but KSON allows lists and scalars as well. To work
+                    // around this mismatch, we serialize non-object KSON documents to TOML as an object with a single
+                    // `value` field that contains the actual value.
+                    val formatted = rootNode.toSourceWithNext(indent, null, compileTarget)
+                    "value = $formatted"
+                } else if (compileTarget is Toml && rootNode is ObjectNode) {
+                    // TODO: explain why this is here
+                    TomlHelper.formatTable("", rootNode, indent, nextNode, compileTarget, true)
+                } else {
+                    rootNode.toSourceWithNext(indent, null, compileTarget)
+                }
 
                 trailingContent.forEach {
                     if (ksonDocument.takeLast(2) != "\n\n") {
                         ksonDocument += "\n\n"
                     }
+
                     ksonDocument += it.toSourceWithNext(indent, null, compileTarget)
                 }
 
@@ -188,91 +201,105 @@ class KsonRootImpl(
                     ksonDocument = ksonDocument.removeSuffix("\n")
                 }
 
-                // TOML: Handle wrapping and comments for root nodes
-                if (compileTarget is Toml) {
-                    when (rootNode) {
-                        is ObjectNode -> {
-                            // Objects don't need wrapping, just add end comments
-                            if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                                val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
-                                ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
-                            }
-                        }
-                        is ListNode -> {
-                            // Lists always need value = wrapping in TOML
-                            val listNode = rootNode
-                            val elementsWithComments = listNode.elements.filterIsInstance<ListElementNodeImpl>()
-                                .filter { it.comments.isNotEmpty() }
-                            
-                            if (elementsWithComments.size == 1 && compileTarget.preserveComments) {
-                                // Single element with comments - put comments before value =
-                                val elementComments =
-                                    elementsWithComments.first().comments.joinToString("\n") { it.trimEnd() }
-                                ksonDocument = elementComments + "\n" + "value = " + ksonDocument.trim()
-                            } else if (elementsWithComments.size > 1 && compileTarget.preserveComments) {
-                                // Multiple elements with comments - already formatted as separate value = lines
-                                // Don't add another value = wrapper
-                            } else {
-                                // Regular list - wrap with value =
-                                ksonDocument = "value = " + ksonDocument.trim()
-                            }
-                            
-                            // Add end comments if any
-                            if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                                val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
-                                ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
-                            }
-                        }
-                        else -> {
-                            // Scalars (strings, numbers, booleans, null)
-                            // Embed blocks are special:
-                            // - With retainEmbedTags: they become inline tables (objects), don't wrap
-                            // - Without retainEmbedTags AND with comments: wrap with value = (like scalars)
-                            // - Without retainEmbedTags AND without comments: don't wrap (already properly formatted)
-                            val isEmbedBlock = rootNode is EmbedBlockNode
-                            
-                            if (!isEmbedBlock) {
-                                // For TOML, regular scalars get wrapped with value =
-                                val hasDocEndComments = compileTarget.preserveComments && documentEndComments.isNotEmpty()
-
-                                if (hasDocEndComments) {
-                                    // Put document end comments BEFORE value =
-                                    val endComments = documentEndComments.joinToString("\n") { it.trimEnd() }
-                                    val scalarValue = ksonDocument.trimStart()
-                                    ksonDocument = "$endComments\nvalue = $scalarValue"
-                                } else {
-                                    // Regular scalar - wrap with value =
-                                    val scalarValue = ksonDocument.trimStart()
-                                    ksonDocument = "value = $scalarValue"
-                                }
-                            } else {
-                                // Embed blocks should emit their own properties (embedContent/embedTag/etc.)
-                                // and must not be wrapped with "value =". Just add end comments if any.
-                                if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                                    val endComments = documentEndComments.joinToString("\n")
-                                    ksonDocument += if (ksonDocument.endsWith(endComments)) "" else "\n\n" + endComments
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // For non-TOML targets, add document end comments at the end as usual
-                    if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
-                        val endComments = documentEndComments.joinToString("\n")
-                        ksonDocument += if (ksonDocument.endsWith(endComments)) {
-                            ""
+                if (compileTarget.preserveComments && documentEndComments.isNotEmpty()) {
+                    val endComments = documentEndComments.joinToString("\n")
+                    ksonDocument += if (ksonDocument.endsWith(endComments)) {
+                        // endComments are already embedded in the document, likely as part of a trailing error
+                        ""
+                    } else {
+                        if (compileTarget is Kson && compileTarget.formatConfig.formattingStyle == FormattingStyle.COMPACT) {
+                            "\n" + endComments
                         } else {
-                            if (compileTarget is Kson && compileTarget.formatConfig.formattingStyle == FormattingStyle.COMPACT) {
-                                "\n" + endComments
-                            } else {
-                                "\n\n" + endComments
-                            }
+                            "\n\n" + endComments
                         }
                     }
                 }
 
                 ksonDocument
             }
+        }
+    }
+
+    object TomlHelper {
+        fun formatTable(
+            tablePath: String,
+            objectNode: ObjectNode,
+            indent: Indent,
+            nextNode: AstNode?,
+            compileTarget: CompileTarget,
+            isDocumentFirst: Boolean = false, // TODO(ao): document
+        ): String {
+            // In TOML, nested objects are formatted by either scoping their properties (e.g.,
+            // `my.nested.property = value`) or using table headers (e.g., `[my.nested]\nproperty = value`). We use the
+            // latter. In KSON terms, this means that object properties are formatted differently when the property contains
+            // an object, provided the...
+            //
+            // Luckily for us, this kind of table formatting only applies to objects that descend from other objects, up to
+            // the root node. Objects that descend from lists are formatted differently. This means that we write custom
+            // traversal code that delegates formatting,
+            // The table header is composed of all object keys in the path to the nested object.
+
+            val builder = StringBuilder()
+
+            // TODO: next node handling
+
+            val objects = mutableListOf<Pair<ObjectPropertyNodeImpl, ObjectNode>>()
+            val embedBlocks = mutableListOf<ObjectPropertyNodeImpl>()
+            val otherNodes = mutableListOf<AstNode>()
+            objectNode.properties.forEach { property ->
+                when (val value = (property as? ObjectPropertyNodeImpl)?.value) {
+                    is ObjectNode -> objects.add(Pair(property, value))
+                    is EmbedBlockNode -> embedBlocks.add(property)
+                    else -> otherNodes.add(property)
+                }
+            }
+
+            otherNodes.forEach { property ->
+                builder.append(property.toSourceWithNext(indent, nextNode, compileTarget))
+                builder.append("\n")
+            }
+
+            embedBlocks.forEach { property ->
+                val key = ((property.key as? ObjectKeyNodeImpl)?.key as? StringNodeImpl)?.stringContent
+                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+                val subPath = if (tablePath.isEmpty()) {
+                    key
+                } else {
+                    "$tablePath.$key"
+                }
+
+                // Ensure tables are separated by an empty line
+                if (otherNodes.isNotEmpty() || !isDocumentFirst) {
+                    builder.append("\n")
+                }
+
+                // TODO(ao): comments to the property go here
+                builder.append("[$subPath]\n")
+                builder.append(property.value.toSourceWithNext(indent, nextNode, compileTarget))
+                builder.append("\n")
+            }
+
+            objects.forEach { property ->
+                val key = ((property.first.key as? ObjectKeyNodeImpl)?.key as? StringNodeImpl)?.stringContent
+                    ?: throw ShouldNotHappenException("formatting to TOML is only possible when the KSON document is valid")
+                val subPath = if (tablePath.isEmpty()) {
+                    key
+                } else {
+                    "$tablePath.$key"
+                }
+
+                // Ensure tables are separated by an empty line
+                if (otherNodes.isNotEmpty() || embedBlocks.isNotEmpty() || !isDocumentFirst) {
+                    builder.append("\n")
+                }
+
+                // TODO(ao): comments to the property go here
+                builder.append("[$subPath]\n")
+                builder.append(formatTable(subPath, property.second, indent, nextNode, compileTarget))
+                builder.append("\n")
+            }
+
+            return builder.toString()
         }
     }
 }
@@ -293,7 +320,7 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
             }
 
             is Yaml -> formatUndelimitedObject(indent, nextNode, compileTarget)
-            is Toml -> formatTomlObject(indent, nextNode, compileTarget)
+            is Toml -> formatInlineTable(indent, nextNode, compileTarget)
             is Json -> formatDelimitedObject(indent, nextNode, compileTarget)
         }
     }
@@ -301,7 +328,8 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
     private fun formatDelimitedObject(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
         val seperator = when (compileTarget) {
             is Kson -> "\n"
-            is Json, is Toml -> ",\n"
+            is Json -> ",\n"
+            is Toml -> ", "
             is Yaml -> throw UnsupportedOperationException("We never format YAML objects as delimited")
         }
 
@@ -315,7 +343,14 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
         }
             |${indent.bodyLinesIndent()}}
             """.trimMargin()
+    }
 
+    private fun formatInlineTable(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
+        val formattedProperties = properties.withIndex().joinToString(", ") { (index, property) ->
+            val nodeAfterThisChild = properties.getOrNull(index + 1) ?: nextNode
+            property.toSourceWithNext(indent.clone(false), nodeAfterThisChild, compileTarget)
+        }
+        return "${indent.firstLineIndent()}{$formattedProperties}"
     }
 
     private fun formatCompactObject(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
@@ -372,205 +407,6 @@ class ObjectNode(val properties: List<ObjectPropertyNode>, location: Location) :
             outputObject + if (properties.size > 1) "\n" else ""
         }
     }
-
-    private fun formatTomlObject(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
-        // If we're in a hanging indent context (inside an inline array) or if we're indented (inside a multi-line array),
-        // use inline table syntax
-        val isInArray = indent.hangingIndent || indent.bodyLinesIndent().isNotEmpty()
-        if (isInArray) {
-            return formatTomlInlineTable(indent, compileTarget)
-        }
-        
-        // TOML: Convert nested structure to flattened dotted keys, then group by top-level table
-        val flattenedProperties = flattenToTomlDottedKeys("", compileTarget)
-
-        val lines = mutableListOf<String>()
-
-        // We'll iterate through flattened properties in order and group dotted keys by their first segment
-        var i = 0
-        while (i < flattenedProperties.size) {
-            val (comments, key, value) = flattenedProperties[i]
-
-            val dotIndex = key.indexOf('.')
-            if (dotIndex == -1) {
-                // Top-level key, emit directly
-                val commentLines = if (compileTarget.preserveComments && comments.isNotEmpty()) {
-                    comments.joinToString("\n") + "\n"
-                } else ""
-                lines.add(commentLines + "$key = $value")
-                i++
-            } else {
-                // Group all keys that start with this top-level segment
-                val top = key.substring(0, dotIndex)
-                // Emit table header
-                lines.add("[$top]")
-
-                // Collect all entries that belong to this table (prefix match)
-                while (i < flattenedProperties.size) {
-                    val (c2, k2, v2) = flattenedProperties[i]
-                    if (!k2.startsWith(top + ".")) break
-                    val subKey = k2.substring(top.length + 1)
-                    val commentLines = if (compileTarget.preserveComments && c2.isNotEmpty()) {
-                        c2.joinToString("\n") + "\n"
-                    } else ""
-                    lines.add(commentLines + "$subKey = $v2")
-                    i++
-                }
-                // Add a separating blank line between this table and subsequent top-level entries
-                if (i < flattenedProperties.size) {
-                    lines.add("")
-                }
-            }
-        }
-
-        return lines.joinToString("\n")
-    }
-    
-    /**
-     * Format object as TOML inline table: {key1 = val1, key2 = val2}
-     * Used when object appears inside an array
-     */
-    internal fun formatTomlInlineTable(indent: Indent, compileTarget: CompileTarget): String {
-        if (properties.isEmpty()) {
-            return indent.firstLineIndent() + "{}"
-        }
-        
-        val emptyIndent = Indent(IndentType.Space(2), 0, false)
-        val inlineProps = properties.filterIsInstance<ObjectPropertyNodeImpl>().joinToString(", ") { property ->
-            val key = property.key.toSourceWithNext(emptyIndent, property.value, compileTarget)
-            val value = when (val v = property.value) {
-                is ObjectNode -> v.formatTomlInlineTable(emptyIndent.copy(hangingIndent = true), compileTarget)
-                is ListNode -> v.toSourceWithNext(emptyIndent.copy(hangingIndent = true), null, compileTarget).trim()
-                is EmbedBlockNode -> {
-                    // Expand embed blocks with dotted notation in inline tables
-                    val embedProps = v.toTomlInlineProperties(key, compileTarget as Toml)
-                    return@joinToString embedProps.joinToString(", ")
-                }
-                else -> v.toSourceWithNext(emptyIndent, null, compileTarget).trim()
-            }
-            "$key = $value"
-        }
-        
-        return indent.firstLineIndent() + "{$inlineProps}"
-    }
-    
-    /**
-     * Recursively flatten nested objects into TOML dotted key notation
-     * Returns a list of (comments, dottedKey, value) triples
-     */
-    private fun flattenToTomlDottedKeys(
-        prefix: String,
-        compileTarget: CompileTarget
-    ): List<Triple<List<String>, String, String>> {
-        val result = mutableListOf<Triple<List<String>, String, String>>()
-        
-        properties.filterIsInstance<ObjectPropertyNodeImpl>().forEach { property ->
-            val key = property.key.toSourceWithNext(Indent(), property.value, compileTarget)
-            val fullKey = if (prefix.isEmpty()) key else "$prefix.$key"
-            
-            when (val value = property.value) {
-                is ObjectNode -> {
-                        // Special-case: when an object represents embedContent-like nested keys
-                        if (key == EmbedObjectKeys.EMBED_CONTENT.key) {
-                            // For embedContent objects that are not plain string embed blocks, emit their
-                            // child properties as dotted keys whose values are TOML triple-quoted strings
-                            value.properties.filterIsInstance<ObjectPropertyNodeImpl>().forEachIndexed { idx, subProp ->
-                                val subKey = subProp.key.toSourceWithNext(Indent(), subProp.value, compileTarget)
-                                var subValue = subProp.value.toSourceWithNext(Indent(), null, compileTarget).trim()
-                                // If the value is quoted, unescape it to get the raw content
-                                if (subValue.startsWith("\"") && subValue.endsWith("\"")) {
-                                    subValue = unescapeStringContent(subValue.substring(1, subValue.length - 1))
-                                }
-                                val triple = "\"\"\"\n${subValue}\n\"\"\""
-                                val commentsForThis = if (idx == 0) property.comments else emptyList()
-                                result.add(Triple(commentsForThis, "$fullKey.$subKey", triple))
-                            }
-                        } else {
-                            // Recursively flatten nested objects
-                            result.addAll(value.flattenToTomlDottedKeys(fullKey, compileTarget))
-                        }
-                }
-                is EmbedBlockNode -> {
-                    // For TOML, always flatten embed blocks into dotted keys
-                    val tomlOutput = value.toSourceWithNext(Indent(), null, compileTarget).trim()
-                    
-                    // Check if output starts with [embedBlock] table header
-                    val lines = tomlOutput.lines()
-                    var idx = 0
-                    var tagRaw: String? = null
-                    var metadataRaw: String? = null
-                    var contentRaw: String? = null
-                    
-                    // Skip [embedBlock] header if present
-                    if (lines.firstOrNull()?.trim() == "[embedBlock]") {
-                        idx = 1
-                    }
-
-                    // Parse the embed block TOML output into discrete parts
-                    while (idx < lines.size) {
-                        val line = lines[idx]
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty() && !trimmedLine.startsWith("#")) {
-                            val parts = trimmedLine.split(" = ", limit = 2)
-                            if (parts.size == 2) {
-                                val subKey = parts[0].trim()
-                                var rhs = parts[1]
-                                if (rhs.trimStart().startsWith("\"\"\"")) {
-                                    // consume until closing triple-quote
-                                    val buffer = StringBuilder(rhs)
-                                    var j = idx + 1
-                                    while (j < lines.size) {
-                                        val nl = lines[j]
-                                        buffer.append("\n").append(nl)
-                                        if (nl.trim().endsWith("\"\"\"")) {
-                                            idx = j
-                                            break
-                                        }
-                                        j++
-                                    }
-                                    rhs = buffer.toString()
-                                }
-
-                                when (subKey) {
-                                    EmbedObjectKeys.EMBED_TAG.key -> tagRaw = rhs
-                                    EmbedObjectKeys.EMBED_METADATA.key -> metadataRaw = rhs
-                                    EmbedObjectKeys.EMBED_CONTENT.key -> contentRaw = rhs
-                                }
-                            }
-                        }
-                        idx++
-                    }
-
-                    // Emit entries with fullKey prefix (ignore metadata in TOML)
-                    if (tagRaw != null) {
-                        result.add(Triple(property.comments, "$fullKey.${EmbedObjectKeys.EMBED_TAG.key}", tagRaw))
-                    }
-                    if (contentRaw != null) {
-                        result.add(Triple(emptyList(), "$fullKey.${EmbedObjectKeys.EMBED_CONTENT.key}", contentRaw))
-                    }
-                }
-                else -> {
-                        // Special-case: if this property is named embedContent, prefer emitting TOML
-                        // triple-quoted multiline basic strings so embedded content is preserved
-                        if (key == EmbedObjectKeys.EMBED_CONTENT.key && value is StringNodeImpl) {
-                            var content = value.processedStringContent
-                            // remove a single trailing newline (we'll add canonical newlines in TOML)
-                            if (content.endsWith("\n")) content = content.removeSuffix("\n")
-                            val triple = "\"\"\"\n${content}\n\"\"\""
-                            result.add(Triple(property.comments, fullKey, triple))
-                        } else {
-                            // Use hangingIndent = true to signal that we're in a property context
-                            // This prevents arrays from using the "value = ..." format
-                            val propertyIndent = Indent(IndentType.Space(2), 0, hangingIndent = true)
-                            val valueStr = value.toSourceWithNext(propertyIndent, null, compileTarget).trim()
-                            result.add(Triple(property.comments, fullKey, valueStr))
-                        }
-                }
-            }
-        }
-        
-        return result
-    }
 }
 
 interface ObjectKeyNode : StringNode
@@ -579,25 +415,20 @@ class ObjectKeyNodeImpl(
     val key: StringNode
 ) : ObjectKeyNode, AstNodeImpl(key.location) {
     override fun toSourceInternal(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
-        val keyOutput = when (compileTarget) {
+        return when (compileTarget) {
             is Toml -> {
-                // For TOML, output unquoted keys when possible
-                val keyString = (key as? StringNodeImpl)?.stringContent ?: key.toSourceWithNext(indent, null, compileTarget)
-                // TOML reserved keywords that must be quoted
-                val tomlReservedKeywords = setOf("true", "false", "null", "inf", "nan")
-                // Check if the key can be unquoted (simple identifier and not a reserved word)
-                if (keyString.matches(Regex("^[A-Za-z_][A-Za-z0-9_-]*$")) && 
-                    !tomlReservedKeywords.contains(keyString.lowercase())) {
-                    keyString
+                if (key is UnquotedStringNode) {
+                    // All unquoted KSON strings are valid TOML keys. TOML doesn't impose restrictions other than
+                    // unquoted keys having characters in `A-Za-z0-9_-`.
+                    key.stringContent
                 } else {
-                    "\"${keyString.replace("\"", "\\\"")}\""
+                    key.toSourceWithNext(indent, nextNode, compileTarget)
                 }
             }
-            else -> key.toSourceWithNext(indent, null, compileTarget)
-        }
-        return when (compileTarget) {
-            is Toml -> keyOutput
-            else -> "$keyOutput:"
+            else -> {
+                val keyOutput = key.toSourceWithNext(indent, null, compileTarget)
+                "$keyOutput:"
+            }
         }
     }
 }
@@ -621,7 +452,8 @@ class ObjectPropertyNodeImpl(
                 }
             }
 
-            is Yaml, is Toml -> undelimitedObjectProperty(indent, nextNode, compileTarget)
+            is Yaml -> undelimitedObjectProperty(indent, nextNode, compileTarget)
+            is Toml -> tomlObjectProperty(indent, nextNode, compileTarget)
             is Json -> delimitedObjectProperty(indent, nextNode, compileTarget)
         }
     }
@@ -637,34 +469,30 @@ class ObjectPropertyNodeImpl(
             // otherwise, increase the indent
             indent.next(true)
         }
-    val sep = if (compileTarget is Toml) " = " else " "
-    return key.toSourceWithNext(indent, value, compileTarget) + sep +
-        value.toSourceWithNext(delimitedPropertyIndent, nextNode, compileTarget)
+        val separator = if (compileTarget is Toml) " = " else " "
+        return key.toSourceWithNext(indent, value, compileTarget) + separator +
+                value.toSourceWithNext(delimitedPropertyIndent, nextNode, compileTarget)
     }
 
     private fun undelimitedObjectProperty(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
-        // Check if the value should be rendered on a new line (for complex types)
-        val isEmbedBlockWithTags = value is EmbedBlockNode && when (compileTarget) {
-            is Yaml -> compileTarget.retainEmbedTags
-            is Toml -> (compileTarget as Toml).retainEmbedTags
-            else -> false
-        }
-        
-        val shouldUseNewLine = (value is ListNode && value.elements.isNotEmpty()) ||
-                               (value is ObjectNode && value.properties.isNotEmpty()) ||
-                               isEmbedBlockWithTags
-        
-        return if (shouldUseNewLine) {
+        return if (
+            (value is ListNode && value.elements.isNotEmpty()) ||
+            (value is ObjectNode && value.properties.isNotEmpty()) ||
+            // check if we're compiling an embed block to an object
+            (compileTarget is Yaml && value is EmbedBlockNode && compileTarget.retainEmbedTags)
+        ) {
             // For non-empty lists and objects, put the value on the next line
-            // TOML doesn't use ':' - it will use dotted keys handled elsewhere
-            val keySuffix = if (compileTarget is Toml) "" else ""
-            key.toSourceWithNext(indent, value, compileTarget) + keySuffix + "\n" +
+            key.toSourceWithNext(indent, value, compileTarget) + "\n" +
                     value.toSourceWithNext(indent.next(false), nextNode, compileTarget)
         } else {
-            val sep = if (compileTarget is Toml) " = " else " "
-            key.toSourceWithNext(indent, value, compileTarget) + sep +
+            key.toSourceWithNext(indent, value, compileTarget) + " " +
                     value.toSourceWithNext(indent.next(true), nextNode, compileTarget)
         }
+    }
+
+    private fun tomlObjectProperty(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
+        return key.toSourceWithNext(indent, value, compileTarget) + " = " +
+                value.toSourceWithNext(indent.clone(true), nextNode, compileTarget)
     }
 
     private fun compactObjectProperty(indent: Indent, nextNode: AstNode?, compileTarget: CompileTarget): String {
@@ -751,87 +579,10 @@ class ListNode(
         compileTarget: CompileTarget,
         listDelimiters: ListDelimiters
     ): String {
-        // TOML arrays: use multi-line for arrays with many elements, inline for short arrays
-        if (compileTarget is Toml) {
-            // Check if we have elements with comments at root level
-            val isRootLevel = indent.bodyLinesIndent().isEmpty()
-            val isDocumentRoot = isRootLevel && !indent.hangingIndent
-            val elementsWithComments = elements.filterIsInstance<ListElementNodeImpl>()
-                .filter { it.comments.isNotEmpty() }
-            
-            // When at document root (not inside an object property) with comments, use preserveComments = false
-            // and format as separate "value = ..." lines (TOML special format for root arrays)
-            // For arrays inside objects or nested arrays, ALWAYS use preserveComments = true to put comments inside brackets
-            val actualCompileTarget = if (isDocumentRoot && elementsWithComments.isNotEmpty()) {
-                Toml(preserveComments = false)
-            } else if (!isDocumentRoot && elementsWithComments.isNotEmpty() && compileTarget.preserveComments) {
-                Toml(preserveComments = true)
-            } else {
-                Toml(preserveComments = false)
-            }
-            
-            // Special case: Document root array with multiple commented elements
-            // Format as separate "value = ..." lines (TOML convention for root-level arrays with comments)
-            if (isDocumentRoot && elementsWithComments.size > 1 && compileTarget.preserveComments) {
-                return elements.withIndex().joinToString("\n") { (index, element) ->
-                    val valueKey = "value"
-                    val elementImpl = element as? ListElementNodeImpl
-                    val comments = elementImpl?.comments?.map { it.trimEnd() } ?: emptyList()
-                    val commentLines = if (comments.isNotEmpty()) comments.joinToString("\n") + "\n" else ""
-                    
-                    // Get element value without comments (using preserveComments = false)
-                    val elementWithoutComments = Toml(preserveComments = false)
-                    val elementValue = elementImpl?.value ?: (element as ListElementNodeImpl).value
-                    
-                    // If element is an ObjectNode, format it as inline table
-                    val elementStr = if (elementValue is ObjectNode) {
-                        // Force inline table format by using hanging indent context
-                        elementValue.formatTomlInlineTable(Indent(IndentType.Space(2), 0, true), elementWithoutComments)
-                    } else {
-                        elementValue.toSourceWithNext(indent, null, elementWithoutComments).trim()
-                    }
-                    
-                    "${commentLines}$valueKey = $elementStr"
-                }
-            }
-            
-            // Determine whether to use multi-line format:
-            // - Always use multi-line if elements have comments and NOT at document root
-            // - If parent is inline array at root level: always use inline  
-            // - If this is a root-level array: use multi-line if 4+ elements
-            // - If nested in multi-line parent: always use multi-line to match parent
-            val shouldUseMultiLine = when {
-                !isDocumentRoot && elementsWithComments.isNotEmpty() && compileTarget.preserveComments -> true // Multi-line for commented elements in objects
-                indent.hangingIndent && isRootLevel -> false // Parent is inline array at root, force inline
-                isRootLevel -> elements.size >= 4 // Root array: heuristic for readability
-                else -> true // Nested or in multi-line parent: always multi-line
-            }
-            
-            if (shouldUseMultiLine) {
-                // Multi-line format for TOML
-                // Don't use hanging indent for multi-line arrays - elements need proper indentation
-                val nextIndent = indent.next(false)
-                return indent.firstLineIndent() + listDelimiters.open + "\n" +
-                    elements.withIndex().joinToString(",\n") { (index, element) ->
-                        val nodeAfterThisChild = elements.getOrNull(index + 1) ?: nextNode
-                        // Comments are handled automatically by toSourceWithNext when preserveComments is true
-                        element.toSourceWithNext(nextIndent, nodeAfterThisChild, actualCompileTarget)
-                    } + "\n" +
-                    indent.bodyLinesIndent() + listDelimiters.close
-            } else {
-                // Inline format for simple TOML arrays
-                // Use hanging indent to signal that we're inside an array
-                val hangingIndent = Indent(IndentType.Space(2), 0, true)
-                val inlineElements = elements.joinToString(", ") { element ->
-                    element.toSourceWithNext(hangingIndent, null, actualCompileTarget).trim()
-                }
-                return indent.firstLineIndent() + listDelimiters.open + inlineElements + listDelimiters.close
-            }
-        }
-        
         val seperator = when (compileTarget) {
             is Kson -> "\n"
             is Json -> ",\n"
+            is Toml -> ",\n"
             else -> throw UnsupportedOperationException("We never format YAML objects as delimited")
         }
 
@@ -1006,6 +757,8 @@ open class QuotedStringNode(
             }
             
             is Toml -> {
+                // TODO: why is this so complicated, compared to YAML? We should probably be able to simplify it
+
                 // For TOML, escape raw whitespace, then normalize
                 val escaped = escapeRawWhitespace(unquotedString)
                 
@@ -1241,11 +994,7 @@ class EmbedBlockNode(
         val rawLiteral = if (isDecodedFromObject) {
             embedContent
         } else {
-            try {
-                embedContentNode.stringContent
-            } catch (e: Exception) {
-                embedContent
-            } ?: embedContent
+            embedContentNode.stringContent
         }
 
         // Trim a single trailing newline for consistent emission; we'll add a newline when building the block
@@ -1254,9 +1003,8 @@ class EmbedBlockNode(
         // Remove common leading indentation from non-empty lines so embedded blocks that were
         // indented in source appear normalized in TOML triple-quoted output
         val lines = contentTrimmed.split("\n")
-        val minIndent = lines.filter { it.isNotEmpty() }
-            .map { it.takeWhile { c -> c == ' ' || c == '\t' }.length }
-            .minOrNull() ?: 0
+        val minIndent =
+            lines.filter { it.isNotEmpty() }.minOfOrNull { it.takeWhile { c -> c == ' ' || c == '\t' }.length } ?: 0
         if (minIndent > 0) {
             contentTrimmed = lines.joinToString("\n") { line ->
                 if (line.length >= minIndent) line.substring(minIndent) else line
@@ -1314,7 +1062,7 @@ class EmbedBlockNode(
             // When there's an embedTag, group fields under [embedBlock] table
             if (embedTag.isNotEmpty()) {
                 val parts = mutableListOf<String>()
-                parts.add("[embedBlock]")
+                parts.add("[embedBlock]") // TODO: can we remove this?
                 parts.add("${EmbedObjectKeys.EMBED_TAG.key} = \"${renderForJsonString(embedTag)}\"")
                 parts.add("${EmbedObjectKeys.EMBED_CONTENT.key} = \"\"\"\n" + escaped + "\n\"\"\"")
                 return parts.joinToString("\n")
@@ -1329,7 +1077,7 @@ class EmbedBlockNode(
             // When there's a tag or metadata, group fields under [embedBlock] table
             val parts = mutableListOf<String>()
             if (embedTag.isNotEmpty() || metadataTag.isNotEmpty()) {
-                parts.add("[embedBlock]")
+                parts.add("[embedBlock]") // TODO: can we remove this? It's wrong in some cases
             }
             // TOML convention: when only metadata exists (no embedTag), emit it as embedTag for simplicity
             if (embedTag.isNotEmpty()) {

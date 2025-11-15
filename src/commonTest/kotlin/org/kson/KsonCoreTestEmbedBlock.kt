@@ -451,8 +451,8 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                embedContent = "content\n"
-                unrelatedKey = "is not an embed block"
+                "embedContent" = "content\n"
+                "unrelatedKey" = "is not an embed block"
             """.trimIndent(),
             compileSettings = compileSettings
         )
@@ -496,7 +496,7 @@ class KsonCoreTestEmbedBlock : KsonCoreTest {
             """.trimIndent(),
             """
                 [embedBlock]
-                unrelatedKey = "is not an embed block"
+                "unrelatedKey" = "is not an embed block"
                 
                 [embedBlock.embedContent]
                 not = "content"
