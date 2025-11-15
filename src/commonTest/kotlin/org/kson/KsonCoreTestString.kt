@@ -40,7 +40,7 @@ class KsonCoreTestString : KsonCoreTest {
             |"This is a string with raw, unescaped whitespace \t\n\ttabbed-indented second line"
             """.trimMargin(),
             """
-            value = "This is a string with raw, unescaped whitespace \\t \\ttabbed-indented second line"
+            value = "This is a string with raw, unescaped whitespace \t\n\ttabbed-indented second line"
             """.trimIndent()
         )
     }
